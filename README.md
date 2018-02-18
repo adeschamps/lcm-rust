@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/adeschamps/lcm-rust.svg?branch=master)](https://travis-ci.org/adeschamps/lcm-rust)
+
 # Rust implementation of LCM
 
 From the [LCM homepage]:
