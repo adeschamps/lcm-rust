@@ -17,12 +17,10 @@ lcm-gen = { version = "0.2.0", default-features = false }
 extern crate lcm_gen;
 
 fn main() {
-    lcm_gen::Config::default()
-        .generate(&[
-            "lcm/point_t.lcm",
-            "lcm/temperature_t.lcm",
-        ])
-        .expect("Failed to generate LCM bindings");
+    lcm_gen::generate(&[
+        "lcm/point_t.lcm",
+        "lcm/temperature_t.lcm",
+    ]).expect("Failed to generate LCM bindings");
 }
 ```
 

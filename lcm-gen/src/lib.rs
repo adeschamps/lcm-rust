@@ -15,6 +15,24 @@ pub mod ast;
 pub mod codegen;
 pub mod parser;
 
+/// Generate Rust types from the given LCM schemas using the default
+/// configuration.
+///
+/// By default, the output is written to $OUT_DIR/mod.rs. Include
+/// it in your code like this:
+///
+/// ```ignore
+/// include!(concat!(env!("OUT_DIR"), "/mod.rs"));
+/// ```
+///
+/// If you need more control, use the [`Config`] struct to customize
+/// code generation.
+///
+/// [`Config`]: struct.Config.html
+pub fn generate<P: AsRef<Path> + Debug>(lcm_files: &[P]) -> Result<(), Error> {
+    Config::default().generate(lcm_files)
+}
+
 /// Configuration for code generation.
 pub struct Config {
     pub package_prefix: Option<String>,
