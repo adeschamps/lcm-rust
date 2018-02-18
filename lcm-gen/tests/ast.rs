@@ -278,10 +278,10 @@ fn parse_struct_with_comments() {
 
 #[test]
 fn struct_with_namespace_creates_submodules() {
-    let mut root = ast::Module::default();
+    let mut root_module = ast::Module::default();
 
     let path = vec![ast::Namespace("foo".into()), ast::Namespace("bar".into())];
-    root.add_struct(
+    root_module.add_struct(
         &path,
         ast::Struct {
             comment: None,
@@ -291,7 +291,7 @@ fn struct_with_namespace_creates_submodules() {
         },
     );
 
-    let foo = root.submodules.get(&ast::Namespace("foo".into())).unwrap();
-    let bar = foo.submodules.get(&ast::Namespace("bar".into())).unwrap();
-    assert_eq!(bar.structs.len(), 1);
+    let foo_module = &root_module.submodules[&ast::Namespace("foo".into())];
+    let bar_module = &foo_module.submodules[&ast::Namespace("bar".into())];
+    assert_eq!(bar_module.structs.len(), 1);
 }

@@ -87,7 +87,7 @@ impl Module {
 impl File {
     pub fn add_package_prefix(&mut self, prefix: &str) {
         self.namespaces
-            .splice(0..0, prefix.split(".").map(|ns| Namespace(ns.into())));
+            .splice(0..0, prefix.split('.').map(|ns| Namespace(ns.into())));
     }
 }
 

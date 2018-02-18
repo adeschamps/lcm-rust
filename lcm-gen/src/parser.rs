@@ -142,7 +142,7 @@ fn parse_message_type(pair: Pair<Rule>) -> ast::Type {
     pair.into_inner()
         .inspect(|pair| {
             if pair.as_rule() == Rule::package_name {
-                namespaces.push(parse_namespace(&pair));
+                namespaces.push(parse_namespace(pair));
             }
         })
         .last()
