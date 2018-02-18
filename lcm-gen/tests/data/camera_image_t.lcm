@@ -1,0 +1,8 @@
+package mycorp;
+
+struct camera_image_t {
+    int64_t      utime;
+    string       camera_name;
+    jpeg.image_t jpeg_image;
+    mit.pose_t   pose;
+}

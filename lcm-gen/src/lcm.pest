@@ -1,0 +1,77 @@
+// A parser for the LCM type spcefication language.
+
+lcm_file = { soi ~ lcm_package? ~ lcm_struct* ~ eoi }
+
+lcm_package = { package_keyword ~ package_name ~ semicolon }
+
+// LCM Struct
+
+lcm_struct = { struct_keyword ~ struct_name ~ "{" ~ (constant_group | member)* ~ "}" }
+
+member = { lcm_type ~ member_name ~ multiplicity* ~ semicolon }
+multiplicity = { "[" ~ (unsigned_int_literal | member_name) ~ "]" }
+
+constant_group = !{ "const" ~ lcm_type ~ constant ~ ("," ~ constant)* ~ ";" }
+constant = { constant_name ~ "=" ~ constant_value }
+constant_value = { float_literal | int_literal }
+
+// Keywords
+
+package_keyword = _{ "package" }
+struct_keyword = _{ "struct" }
+
+// Identifiers
+
+identifier = @{ (alpha | underscore) ~ (alpha | digit | underscore)* }
+
+constant_name = @{ identifier }
+package_name = @{ identifier }
+struct_name = @{ identifier }
+type_name = @{ identifier }
+member_name = @{ identifier }
+
+// Types
+
+lcm_type = {
+    int8_t | int16_t | int32_t | int64_t | float | double | string |
+    boolean | byte | message_t
+}
+
+int8_t = { "int8_t" }
+int16_t = { "int16_t" }
+int32_t = { "int32_t" }
+int64_t = { "int64_t" }
+float = { "float" }
+double = { "double" }
+string = { "string" }
+boolean = { "boolean" }
+byte = { "byte" }
+message_t = { (package_name ~ ".")* ~ struct_name }
+
+// Primitives
+
+float_literal = @{
+    int_literal ~ "." ~ unsigned_int_literal? ~ exponent? |
+    int_literal ~ exponent
+}
+unsigned_int_literal = @{ digit ~ (digit | "_")* }
+int_literal = @{ (plus | minus)? ~ unsigned_int_literal }
+exponent = { ^"e" ~ (plus | minus)? ~ int_literal }
+
+alpha = _{ 'a'..'z' | 'A'..'Z' }
+digit = _{ '0'..'9' }
+plus = { "+" }
+minus = { "-" }
+
+newline = _{ "\n" | "\r\n" }
+underscore = _{ "_" }
+semicolon = _{ ";" }
+
+// Special rules
+
+whitespace = _{ " " | newline | "\t" }
+
+comment = ${ line_comment ~ (newline ~ " "* ~ line_comment)* | block_comment }
+// comment = { line_comment ~ (newline ~ line_comment)* | block_comment }
+line_comment = { "//" ~ (!newline ~ any)* }
+block_comment = { "/*" ~ (!"*/" ~ any)* ~ "*/" }

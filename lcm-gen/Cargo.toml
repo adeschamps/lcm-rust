@@ -1,0 +1,22 @@
+[package]
+name = "lcm-gen"
+version = "0.1.0"
+authors = ["Anthony Deschamps <anthony.j.deschamps@gmail.com>"]
+
+[[bin]]
+name = "lcm-gen-rust"
+path = "src/lcm-gen.rs"
+required-features = ["cli"]
+
+[dependencies]
+pest = "1.0.3"
+pest_derive = "1.0.3"
+failure = "0.1.1"
+structopt = { version = "0.2.1", optional = true }
+
+[dev-dependencies]
+pretty_assertions = "0.5.0"
+
+[features]
+default = ["cli"]
+cli = ["structopt"]

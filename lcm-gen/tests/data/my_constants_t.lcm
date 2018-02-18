@@ -1,0 +1,5 @@
+struct my_constants_t
+{
+    const int32_t YELLOW=1, GOLDENROD=2, CANARY=3;
+    const double E=2.8718;
+}
