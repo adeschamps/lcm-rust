@@ -68,8 +68,8 @@ fn parse_struct(comment: Option<ast::Comment>, pair: Pair<Rule>) -> ast::Struct 
 
     for pair in pairs {
         match pair.as_rule() {
-            Rule::member => {
-                fields.push(parse_field(last_comment.take(), pair));
+            Rule::member_group => {
+                fields.extend(parse_fields(last_comment.take(), pair));
             }
             Rule::constant_group => {
                 let mut pairs = pair.into_inner();
@@ -93,18 +93,24 @@ fn parse_struct(comment: Option<ast::Comment>, pair: Pair<Rule>) -> ast::Struct 
     }
 }
 
-fn parse_field(comment: Option<ast::Comment>, pair: Pair<Rule>) -> ast::Field {
+fn parse_fields(comment: Option<ast::Comment>, pair: Pair<Rule>) -> Vec<ast::Field> {
     let mut pairs = pair.into_inner();
     let ty = parse_type(pairs.next().expect("Guaranteed by grammar"));
-    let name = parse_name(&pairs.next().expect("Guaranteed by grammar"));
-    let multiplicity = pairs.map(parse_multiplicity).collect();
 
-    ast::Field {
-        comment,
-        name,
-        ty,
-        multiplicity,
-    }
+    pairs
+        .map(|pair| {
+            let mut pairs = pair.into_inner();
+            let name = parse_name(&pairs.next().expect("Guaranteed by grammar"));
+            let multiplicity = pairs.map(parse_multiplicity).collect();
+
+            ast::Field {
+                comment: comment.clone(),
+                name,
+                ty: ty.clone(),
+                multiplicity,
+            }
+        })
+        .collect()
 }
 
 fn parse_constant(comment: Option<ast::Comment>, ty: ast::Type, pair: Pair<Rule>) -> ast::Constant {

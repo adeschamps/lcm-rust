@@ -61,13 +61,40 @@ fn member() {
     parses_to!{
         parser: LcmParser,
         input: "int32_t foo ;",
-        rule: Rule::member,
+        rule: Rule::member_group,
         tokens: [
-            member(0, 13, [
+            member_group(0, 13, [
                 lcm_type(0, 7, [
                     int32_t(0, 7)
                 ]),
-                member_name(8, 11)
+                member(8, 12, [
+                    member_name(8, 11),
+                ]),
+            ])
+        ]
+    }
+}
+
+#[test]
+fn member_group() {
+    parses_to!{
+        parser: LcmParser,
+        input: "int32_t x, y, z;",
+        rule: Rule::member_group,
+        tokens: [
+            member_group(0, 16, [
+                lcm_type(0, 7, [
+                    int32_t(0, 7)
+                ]),
+                member(8, 9, [
+                    member_name(8, 9),
+                ]),
+                member(11, 12, [
+                    member_name(11, 12),
+                ]),
+                member(14, 15, [
+                    member_name(14, 15),
+                ]),
             ])
         ]
     }
@@ -106,18 +133,20 @@ fn member_2d_array() {
     parses_to!{
         parser: LcmParser,
         input: "int32_t foo[3][count];",
-        rule: Rule::member,
+        rule: Rule::member_group,
         tokens: [
-            member(0, 22, [
+            member_group(0, 22, [
                 lcm_type(0, 7, [
                     int32_t(0, 7)
                 ]),
-                member_name(8, 11),
-                multiplicity(11, 14, [
-                    unsigned_int_literal(12, 13)
-                ]),
-                multiplicity(14, 21, [
-                    member_name(15, 20)
+                member(8, 21, [
+                    member_name(8, 11),
+                    multiplicity(11, 14, [
+                        unsigned_int_literal(12, 13)
+                    ]),
+                    multiplicity(14, 21, [
+                        member_name(15, 20)
+                    ]),
                 ]),
             ])
         ]
@@ -220,11 +249,13 @@ fn struct_with_comments() {
         tokens: [
             lcm_struct(0, 379, [
                 struct_name(7, 20),
-                member(27, 43, [
+                member_group(27, 43, [
                     lcm_type(27, 34, [
                         int64_t(27, 34),
                     ]),
-                    member_name(37, 42),
+                    member(37, 42, [
+                        member_name(37, 42),
+                    ]),
                 ]),
                 comment(52, 81, [
                     line_comment(52, 81),
@@ -232,11 +263,13 @@ fn struct_with_comments() {
                 comment(87, 351, [
                     block_comment(87, 351),
                 ]),
-                member(356, 377, [
+                member_group(356, 377, [
                     lcm_type(356, 362, [
                         double(356, 362),
                     ]),
-                    member_name(366, 376),
+                    member(366, 376, [
+                        member_name(366, 376),
+                    ]),
                 ])
             ])
         ]
@@ -252,22 +285,26 @@ fn struct_with_array() {
         tokens: [
             lcm_struct(0, 78, [
                 struct_name(7, 21),
-                member(28, 44, [
+                member_group(28, 44, [
                     lcm_type(28, 35, [
                         int32_t(28, 35)
                     ]),
-                    member_name(36, 43),
+                    member(36, 43, [
+                        member_name(36, 43),
+                    ]),
                 ]),
-                member(49, 76, [
+                member_group(49, 76, [
                     lcm_type(49, 55, [
                         double(49, 55)
                     ]),
-                    member_name(57, 63),
-                    multiplicity(63, 72, [
-                        member_name(64, 71)
-                    ]),
-                    multiplicity(72, 75, [
-                        unsigned_int_literal(73, 74)
+                    member(57, 75, [
+                        member_name(57, 63),
+                        multiplicity(63, 72, [
+                            member_name(64, 71)
+                        ]),
+                        multiplicity(72, 75, [
+                            unsigned_int_literal(73, 74)
+                        ]),
                     ]),
                 ]),
             ])
@@ -336,35 +373,43 @@ fn struct_with_namespace() {
                 ]),
                 lcm_struct(17, 148, [
                     struct_name(24, 38),
-                    member(45, 64, [
+                    member_group(45, 64, [
                         lcm_type(45, 52, [
                             int64_t(45, 52),
                         ]),
-                        member_name(58, 63),
+                        member(58, 63, [
+                            member_name(58, 63),
+                        ]),
                     ]),
-                    member(69, 94, [
+                    member_group(69, 94, [
                         lcm_type(69, 75, [
                             string(69, 75),
                         ]),
-                        member_name(82, 93),
+                        member(82, 93, [
+                            member_name(82, 93),
+                        ]),
                     ]),
-                    member(99, 123, [
+                    member_group(99, 123, [
                         lcm_type(99, 111, [
                             message_t(99, 111, [
                                 package_name(99, 103),
                                 struct_name(104, 111),
                             ]),
                         ]),
-                        member_name(112, 122),
+                        member(112, 122, [
+                            member_name(112, 122),
+                        ]),
                     ]),
-                    member(128, 146, [
+                    member_group(128, 146, [
                         lcm_type(128, 138, [
                             message_t(128, 138, [
                                 package_name(128, 131),
                                 struct_name(132, 138),
                             ]),
                         ]),
-                        member_name(141, 145),
+                        member(141, 145, [
+                            member_name(141, 145),
+                        ]),
                     ]),
                 ]),
             ])
@@ -382,43 +427,51 @@ fn multiple_structs() {
             lcm_file(0, 93, [
                 lcm_struct(0, 38, [
                     struct_name(7, 8),
-                    member(19, 23, [
+                    member_group(19, 23, [
                         lcm_type(19, 20, [
                             message_t(19, 20, [
                                 struct_name(19, 20),
                             ]),
                         ]),
-                        member_name(21, 22),
+                        member(21, 22, [
+                            member_name(21, 22),
+                        ]),
                     ]),
-                    member(32, 36, [
+                    member_group(32, 36, [
                         lcm_type(32, 33, [
                             message_t(32, 33, [
                                 struct_name(32, 33),
                             ]),
                         ]),
-                        member_name(34, 35),
+                        member(34, 35, [
+                            member_name(34, 35),
+                        ]),
                     ]),
                 ]),
                 lcm_struct(40, 65, [
                     struct_name(47, 48),
-                    member(59, 63, [
+                    member_group(59, 63, [
                         lcm_type(59, 60, [
                             message_t(59, 60, [
                                 struct_name(59, 60),
                             ]),
                         ]),
-                        member_name(61, 62),
+                        member(61, 62, [
+                            member_name(61, 62),
+                        ]),
                     ]),
                 ]),
                 lcm_struct(67, 92, [
                     struct_name(74, 75),
-                    member(86, 90, [
+                    member_group(86, 90, [
                         lcm_type(86, 87, [
                             message_t(86, 87, [
                                 struct_name(86, 87),
                             ]),
                         ]),
-                        member_name(88, 89),
+                        member(88, 89, [
+                            member_name(88, 89),
+                        ]),
                     ]),
                 ]),
             ])
@@ -459,17 +512,17 @@ fn multiline_comment() {
 #[test]
 fn block_comment() {
     parses_to!{
-        parser: LcmParser,
-        input: r#"/* A comment
-on multiple
-lines */"#,
-        rule: Rule::comment,
-        tokens: [
-            comment(0, 33, [
-                block_comment(0, 33)
-            ])
-        ]
-    }
+            parser: LcmParser,
+            input: r#"/* A comment
+    on multiple
+    lines */"#,
+            rule: Rule::comment,
+            tokens: [
+                comment(0, 41, [
+                    block_comment(0, 41)
+                ])
+            ]
+        }
 }
 
 #[test]
@@ -492,20 +545,24 @@ fn comments() {
                     comment(129, 162, [
                         line_comment(129, 162),
                     ]),
-                    member(167, 177, [
+                    member_group(167, 177, [
                         lcm_type(167, 174, [
                             int32_t(167, 174),
                         ]),
-                        member_name(175, 176)
+                        member(175, 176, [
+                            member_name(175, 176),
+                        ]),
                     ]),
                     comment(182, 213, [
                         line_comment(182, 213),
                     ]),
-                    member(218, 228, [
+                    member_group(218, 228, [
                         lcm_type(218, 225, [
                             int32_t(218, 225),
                         ]),
-                        member_name(226, 227),
+                        member(226, 227, [
+                            member_name(226, 227),
+                        ]),
                     ]),
                 ])
             ])

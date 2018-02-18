@@ -59,7 +59,7 @@ pub enum Type {
     Struct(Vec<Namespace>, String),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Comment(pub String);
 
 impl Module {

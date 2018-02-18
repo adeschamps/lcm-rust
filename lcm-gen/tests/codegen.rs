@@ -64,7 +64,9 @@ check_generated!(
 "#
 );
 
-check_generated!(comments_t, r#"#[doc = " This is a comment
+check_generated!(
+    comments_t,
+    r#"#[doc = " This is a comment
  that spans multiple lines"]
 #[derive(Debug, LcmMessage)]
 pub struct my_struct_t {
@@ -73,9 +75,12 @@ pub struct my_struct_t {
     #[doc = " Vertical position in meters."]
     pub y: i32,
 }
-"#);
+"#
+);
 
-check_generated!(multiple_structs, r#"#[derive(Debug, LcmMessage)]
+check_generated!(
+    multiple_structs,
+    r#"#[derive(Debug, LcmMessage)]
 pub struct A {
     pub b: B,
     pub c: C,
@@ -88,9 +93,12 @@ pub struct B {
 pub struct C {
     pub b: B,
 }
-"#);
+"#
+);
 
-check_generated!(my_constants_t, r#"#[derive(Debug, LcmMessage)]
+check_generated!(
+    my_constants_t,
+    r#"#[derive(Debug, LcmMessage)]
 pub struct my_constants_t {
 }
 impl my_constants_t {
@@ -99,7 +107,8 @@ impl my_constants_t {
     const CANARY: i32 = 3;
     const E: f64 = 2.8718;
 }
-"#);
+"#
+);
 
 check_generated!(
     point2d_list_t,
@@ -123,6 +132,25 @@ pub struct temperature_t {
      * line is not syntactically necessary, it's just pretty.
      "]
     pub degCelsius: f64,
+}
+"#
+);
+
+/// Tests the case where multiple members share the same type:
+///
+/// ```
+/// double x, y, z;
+/// ```
+check_generated!(
+    member_group,
+    r#"#[derive(Debug, LcmMessage)]
+pub struct member_group {
+    #[doc = " A vector."]
+    pub x: f64,
+    #[doc = " A vector."]
+    pub y: f64,
+    #[doc = " A vector."]
+    pub z: f64,
 }
 "#
 );

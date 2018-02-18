@@ -6,12 +6,13 @@ lcm_package = { package_keyword ~ package_name ~ semicolon }
 
 // LCM Struct
 
-lcm_struct = { struct_keyword ~ struct_name ~ "{" ~ (constant_group | member)* ~ "}" }
+lcm_struct = { struct_keyword ~ struct_name ~ "{" ~ (constant_group | member_group)* ~ "}" }
 
-member = { lcm_type ~ member_name ~ multiplicity* ~ semicolon }
+member_group = { lcm_type ~ member ~ (comma ~ member)* ~ semicolon }
+member = { member_name ~ multiplicity* }
 multiplicity = { "[" ~ (unsigned_int_literal | member_name) ~ "]" }
 
-constant_group = !{ "const" ~ lcm_type ~ constant ~ ("," ~ constant)* ~ ";" }
+constant_group = !{ "const" ~ lcm_type ~ constant ~ (comma ~ constant)* ~ semicolon }
 constant = { constant_name ~ "=" ~ constant_value }
 constant_value = { float_literal | int_literal }
 
@@ -66,6 +67,7 @@ minus = { "-" }
 newline = _{ "\n" | "\r\n" }
 underscore = _{ "_" }
 semicolon = _{ ";" }
+comma = _{ "," }
 
 // Special rules
 
