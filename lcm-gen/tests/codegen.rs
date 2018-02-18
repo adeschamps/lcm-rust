@@ -37,13 +37,84 @@ pub struct MyType {
     assert_eq!(generated, expected);
 }
 
-#[test]
-fn temperature_t() {
-    let generated = lcm_gen::Config::default()
-        .generate_string(&["tests/data/temperature_t.lcm"])
-        .unwrap();
+macro_rules! check_generated {
+    ( $lcm_type:ident, $expected:expr ) => {
+        #[test]
+        fn $lcm_type() {
+            let generated = lcm_gen::Config::default()
+                .generate_string(&[concat!("tests/data/", stringify!($lcm_type), ".lcm")])
+                .unwrap();
 
-    let expected = r#"#[derive(Debug, LcmMessage)]
+            assert_eq!(generated, $expected);
+        }
+    }
+}
+
+check_generated!(
+    camera_image_t,
+    r#"pub mod mycorp {
+    #[derive(Debug, LcmMessage)]
+    pub struct camera_image_t {
+        pub utime: i64,
+        pub camera_name: String,
+        pub jpeg_image: jpeg::image_t,
+        pub pose: mit::pose_t,
+    }
+}
+"#
+);
+
+check_generated!(comments_t, r#"#[doc = " This is a comment
+ that spans multiple lines"]
+#[derive(Debug, LcmMessage)]
+pub struct my_struct_t {
+    #[doc = " Horizontal position in meters."]
+    pub x: i32,
+    #[doc = " Vertical position in meters."]
+    pub y: i32,
+}
+"#);
+
+check_generated!(multiple_structs, r#"#[derive(Debug, LcmMessage)]
+pub struct A {
+    pub b: B,
+    pub c: C,
+}
+#[derive(Debug, LcmMessage)]
+pub struct B {
+    pub a: A,
+}
+#[derive(Debug, LcmMessage)]
+pub struct C {
+    pub b: B,
+}
+"#);
+
+check_generated!(my_constants_t, r#"#[derive(Debug, LcmMessage)]
+pub struct my_constants_t {
+}
+impl my_constants_t {
+    const YELLOW: i32 = 1;
+    const GOLDENROD: i32 = 2;
+    const CANARY: i32 = 3;
+    const E: f64 = 2.8718;
+}
+"#);
+
+check_generated!(
+    point2d_list_t,
+    r#"#[derive(Debug, LcmMessage)]
+pub struct point2d_list_t {
+    pub npoints: i32,
+    #[lcm(length = "npoints; 2")]
+    pub points: Vec<[f64; 2]>,
+}
+"#
+);
+
+check_generated!(
+    temperature_t,
+    r#"#[derive(Debug, LcmMessage)]
 pub struct temperature_t {
     pub utime: i64,
     #[doc = " Temperature in degrees Celsius. A "float" would probably
@@ -53,24 +124,5 @@ pub struct temperature_t {
      "]
     pub degCelsius: f64,
 }
-"#;
-
-    assert_eq!(generated, expected);
-}
-
-#[test]
-fn point2d_list_t() {
-    let generated = lcm_gen::Config::default()
-        .generate_string(&["tests/data/point2d_list_t.lcm"])
-        .unwrap();
-
-    let expected = r#"#[derive(Debug, LcmMessage)]
-pub struct point2d_list_t {
-    pub npoints: i32,
-    #[lcm(length = "npoints")]
-    pub points: Vec<[f64; 2]>,
-}
-"#;
-
-    assert_eq!(generated, expected);
-}
+"#
+);

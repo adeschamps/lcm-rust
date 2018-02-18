@@ -1,4 +1,5 @@
 use ast;
+use itertools::Itertools;
 use std::fmt::{self, Display, Formatter};
 
 pub fn generate(module: &ast::Module) -> String {
@@ -68,7 +69,7 @@ impl<'a> CodeGenerator<'a> {
             self.generate_struct(s);
         }
         for (name, submodule) in &module.submodules {
-            self.push_line(&format!("mod {} {{", name.0));
+            self.push_line(&format!("pub mod {} {{", name.0));
             self.indent().generate_module(submodule);
             self.push_line("}");
         }
@@ -84,11 +85,30 @@ impl<'a> CodeGenerator<'a> {
             self.indent().generate_field(field);
         }
         self.push_line("}");
+
+        if !s.constants.is_empty() {
+            self.push_line(&format!("impl {} {{", s.name));
+            for constant in &s.constants {
+                self.indent().generate_constant(constant);
+            }
+            self.push_line("}");
+        }
     }
 
     fn generate_field(&mut self, field: &ast::Field) {
         if let Some(ref comment) = field.comment {
             self.generate_comment(comment);
+        }
+        if !field.multiplicity.is_empty() {
+            let lengths = field
+                .multiplicity
+                .iter()
+                .map(|mult| match *mult {
+                    ast::Multiplicity::Constant(len) => len.to_string(),
+                    ast::Multiplicity::Variable(ref len) => len.to_string(),
+                })
+                .join("; ");
+            self.push_line(&format!("#[lcm(length = \"{}\")]", lengths));
         }
         self.push(&format!("pub {}: ", field.name));
         for multiplicity in &field.multiplicity {
@@ -113,6 +133,16 @@ impl<'a> CodeGenerator<'a> {
             }
         }
         self.push_line(",");
+    }
+
+    fn generate_constant(&mut self, constant: &ast::Constant) {
+        if let Some(ref comment) = constant.comment {
+            self.generate_comment(comment);
+        }
+        self.push_line(&format!(
+            "const {}: {} = {};",
+            constant.name, constant.ty, constant.value
+        ));
     }
 
     fn generate_comment(&mut self, comment: &ast::Comment) {
