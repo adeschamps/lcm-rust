@@ -18,8 +18,8 @@ pub mod parser;
 /// Generate Rust types from the given LCM schemas using the default
 /// configuration.
 ///
-/// By default, the output is written to $OUT_DIR/mod.rs. Include
-/// it in your code like this:
+/// By default, the output is written to `$OUT_DIR/mod.rs`. Include it
+/// in your code like this:
 ///
 /// ```ignore
 /// include!(concat!(env!("OUT_DIR"), "/mod.rs"));
