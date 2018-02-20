@@ -1,0 +1,11 @@
+struct temperature_t
+{
+    int64_t   utime;         // Timestamp, in microseconds
+
+    /* Temperature in degrees Celsius. A "float" would probably
+     * be good enough, unless we're measuring temperatures during
+     * the big bang. Note that the asterisk on the beginning of this
+     * line is not syntactically necessary, it's just pretty.
+     */
+    double    degCelsius;
+}

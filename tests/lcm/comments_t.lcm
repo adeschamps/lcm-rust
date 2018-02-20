@@ -1,0 +1,10 @@
+// This is a comment that is not part of the struct.
+
+// This is a comment
+// that spans multiple lines
+struct my_struct_t {
+    // Horizontal position in meters.
+    int32_t x;
+    // Vertical position in meters.
+    int32_t y;
+}

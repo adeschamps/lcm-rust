@@ -1,0 +1,17 @@
+[package]
+name = "tests"
+version = "0.1.0"
+authors = ["Anthony Deschamps <anthony.j.deschamps@gmail.com>"]
+build = "src/build.rs"
+publish = false
+
+[lib]
+doctest = false
+
+[dependencies]
+lcm = { path = "../lcm" }
+lcm-derive = { path = "../lcm-derive" }
+
+[build-dependencies]
+lcm-gen = { path = "../lcm-gen" }
+glob = "0.2.11"
