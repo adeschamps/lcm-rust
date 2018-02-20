@@ -115,7 +115,7 @@ check_generated!(
     r#"#[derive(Debug, Message)]
 pub struct point2d_list_t {
     pub npoints: i32,
-    #[lcm(length = "npoints; 2")]
+    #[lcm(length = "npoints")]
     pub points: Vec<[f64; 2]>,
 }
 "#

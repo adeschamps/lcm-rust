@@ -45,7 +45,7 @@ impl Field
 		if self.dims.is_empty() {
 			quote! { ::lcm::Message::encode(&self.#name, &mut buffer)?; }
 		} else {
-			let mut tokens = quote! { ::lcm::Message::encode(&item, &mut buffer)?; };
+			let mut tokens = quote! { ::lcm::Message::encode(item, &mut buffer)?; };
 			for dim in self.dims.iter().rev() {
 				tokens = match *dim {
 					Dim::Fixed(_) => quote! {for item in item.iter() { #tokens }},
@@ -85,7 +85,7 @@ impl Field
 						need_q_mark = false;
 
 						if old_q_mark {
-							quote! { [ #(#inner?,)* ] }
+							quote! { Ok([ #(#inner?,)* ]) }
 						} else {
 							quote! { [ #(#inner,)* ] }
 						}
@@ -93,7 +93,7 @@ impl Field
 					Dim::Variable(ref s) => {
 						let dim_name = syn::Ident::from(s as &str);
 						need_q_mark = true;
-						quote! { (0..#dim_name).map(|_| #tokens).collect::<Result<_>>() }
+						quote! { (0..#dim_name).map(|_| #tokens).collect::<Result<_, ::std::io::Error>>() }
 					}
 				};
 			}

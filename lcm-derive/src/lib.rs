@@ -50,7 +50,7 @@ pub fn lcm_message(input: proc_macro::TokenStream) -> proc_macro::TokenStream
 				Ok(())
 			}
 
-			fn decode(mut buffer: &mut ::std::io::Read) -> Result<Self>
+			fn decode(mut buffer: &mut ::std::io::Read) -> ::std::io::Result<Self>
 			{
 				#(#decode_tokens)*
 				Ok(#name {

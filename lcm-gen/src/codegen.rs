@@ -103,12 +103,12 @@ impl<'a> CodeGenerator<'a> {
             let lengths = field
                 .multiplicity
                 .iter()
-                .map(|mult| match *mult {
-                    ast::Multiplicity::Constant(len) => len.to_string(),
-                    ast::Multiplicity::Variable(ref len) => len.to_string(),
+                .filter_map(|mult| match *mult {
+                    ast::Multiplicity::Constant(_) => None,
+                    ast::Multiplicity::Variable(ref len) => Some(format!("length = \"{}\"", len))
                 })
-                .join("; ");
-            self.push_line(&format!("#[lcm(length = \"{}\")]", lengths));
+                .join(", ");
+            self.push_line(&format!("#[lcm({})]", lengths));
         }
         self.push(&format!("pub {}: ", field.name));
         for multiplicity in &field.multiplicity {
