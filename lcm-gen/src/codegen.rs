@@ -140,13 +140,13 @@ impl<'a> CodeGenerator<'a> {
             self.generate_comment(comment);
         }
         self.push_line(&format!(
-            "const {}: {} = {};",
+            "pub const {}: {} = {};",
             constant.name, constant.ty, constant.value
         ));
     }
 
     fn generate_comment(&mut self, comment: &ast::Comment) {
-        self.push_line(&format!("#[doc = \"{}\"]", comment.0));
+        self.push_line(&format!("#[doc = r#\"{}\"#]", comment.0));
     }
 }
 
