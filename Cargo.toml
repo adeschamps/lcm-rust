@@ -1,4 +1,4 @@
 [workspace]
 members = [
-  "lcm-gen",
+  "lcm-gen", "lcm-derive"
 ]

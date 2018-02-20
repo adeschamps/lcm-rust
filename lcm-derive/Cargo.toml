@@ -1,0 +1,11 @@
+[package]
+name = "lcm-derive"
+version = "0.1.0"
+authors = ["Nathan Kent <nate@nkent.net>"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+quote = "0.4"
+syn = "0.12"
