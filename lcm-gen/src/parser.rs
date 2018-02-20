@@ -66,7 +66,7 @@ fn parse_struct(comment: Option<ast::Comment>, pair: Pair<Rule>) -> ast::Struct 
     for pair in pairs {
         match pair.as_rule() {
             Rule::member_group => {
-                fields.extend(parse_fields(last_comment.take(), pair));
+                fields.extend(parse_fields(&last_comment.take(), pair));
             }
             Rule::constant_group => {
                 let mut pairs = pair.into_inner();
@@ -90,7 +90,7 @@ fn parse_struct(comment: Option<ast::Comment>, pair: Pair<Rule>) -> ast::Struct 
     }
 }
 
-fn parse_fields(comment: Option<ast::Comment>, pair: Pair<Rule>) -> Vec<ast::Field> {
+fn parse_fields(comment: &Option<ast::Comment>, pair: Pair<Rule>) -> Vec<ast::Field> {
     let mut pairs = pair.into_inner();
     let ty = parse_type(pairs.next().expect("Guaranteed by grammar"));
 

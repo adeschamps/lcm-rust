@@ -15,7 +15,8 @@ struct Options {
                 help = "Add this package name as a prefix to the declared package.")]
     package_prefix: Option<String>,
 
-    #[structopt(long = "out", short = "o", parse(from_os_str), default_value = "mod.rs")]
+    #[structopt(long = "out", short = "o", parse(from_os_str),
+                help = "The file to write the generated code to.", default_value = "mod.rs")]
     output_file: PathBuf,
 
     #[structopt(long = "derive", short = "d", raw(number_of_values = "1"),
