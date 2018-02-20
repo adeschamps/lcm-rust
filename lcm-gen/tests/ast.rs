@@ -295,3 +295,30 @@ fn struct_with_namespace_creates_submodules() {
     let bar_module = &foo_module.submodules[&ast::Namespace("bar".into())];
     assert_eq!(bar_module.structs.len(), 1);
 }
+
+#[test]
+fn comment_before_package() {
+    let data = r#"// A package
+package exlcm;
+
+struct foo_t {
+}
+"#;
+
+    let file = parser::parse_file(data).expect("Failed to parse file.");
+
+    assert_eq!(
+        file,
+        ast::File {
+            namespaces: vec![ast::Namespace("exlcm".into())],
+            structs: vec![
+                ast::Struct {
+                    comment: None,
+                    name: "foo_t".into(),
+                    fields: vec![],
+                    constants: vec![],
+                },
+            ],
+        }
+    );
+}

@@ -14,27 +14,24 @@ pub struct LcmParser;
 const _GRAMMAR: &str = include_str!("lcm.pest");
 
 pub fn parse_file(input: &str) -> Result<ast::File, Error> {
-    let mut pairs = LcmParser::parse(Rule::lcm_file, input)
+    let pairs = LcmParser::parse(Rule::lcm_file, input)
         .map_err(|e| format_err!("Failed to parse file:\n{}", e))?
         .next()
         .expect("Exactly one file should have been parsed")
-        .into_inner()
-        .peekable();
+        .into_inner();
 
-    let namespaces = match pairs.peek() {
-        Some(pair) if pair.as_rule() == Rule::lcm_package => pair.clone()
-            .into_inner()
-            .map(|p| parse_namespace(&p))
-            .collect(),
-        _ => vec![],
-    };
-
+    let mut namespaces = Vec::new();
     let mut structs = Vec::new();
     let mut last_comment = None;
 
     for pair in pairs {
         match pair.as_rule() {
-            Rule::lcm_package => {}
+            Rule::lcm_package => {
+                namespaces = pair.into_inner().map(|p| parse_namespace(&p)).collect();
+                // Any comments before the package line should not be
+                // associated with the next struct.
+                last_comment = None;
+            }
             Rule::lcm_struct => {
                 structs.push(parse_struct(last_comment.take(), pair));
             }
