@@ -28,7 +28,7 @@ fn simple_struct() {
 
     let generated = codegen::generate(&module);
 
-    let expected = r#"#[derive(Debug, LcmMessage)]
+    let expected = r#"#[derive(Debug, Message)]
 pub struct MyType {
     pub field: f64,
 }
@@ -53,7 +53,7 @@ macro_rules! check_generated {
 check_generated!(
     camera_image_t,
     r#"pub mod mycorp {
-    #[derive(Debug, LcmMessage)]
+    #[derive(Debug, Message)]
     pub struct camera_image_t {
         pub utime: i64,
         pub camera_name: String,
@@ -68,7 +68,7 @@ check_generated!(
     comments_t,
     r#"#[doc = " This is a comment
  that spans multiple lines"]
-#[derive(Debug, LcmMessage)]
+#[derive(Debug, Message)]
 pub struct my_struct_t {
     #[doc = " Horizontal position in meters."]
     pub x: i32,
@@ -80,16 +80,16 @@ pub struct my_struct_t {
 
 check_generated!(
     multiple_structs,
-    r#"#[derive(Debug, LcmMessage)]
+    r#"#[derive(Debug, Message)]
 pub struct A {
     pub b: B,
     pub c: C,
 }
-#[derive(Debug, LcmMessage)]
+#[derive(Debug, Message)]
 pub struct B {
     pub a: A,
 }
-#[derive(Debug, LcmMessage)]
+#[derive(Debug, Message)]
 pub struct C {
     pub b: B,
 }
@@ -98,7 +98,7 @@ pub struct C {
 
 check_generated!(
     my_constants_t,
-    r#"#[derive(Debug, LcmMessage)]
+    r#"#[derive(Debug, Message)]
 pub struct my_constants_t {
 }
 impl my_constants_t {
@@ -112,7 +112,7 @@ impl my_constants_t {
 
 check_generated!(
     point2d_list_t,
-    r#"#[derive(Debug, LcmMessage)]
+    r#"#[derive(Debug, Message)]
 pub struct point2d_list_t {
     pub npoints: i32,
     #[lcm(length = "npoints; 2")]
@@ -123,7 +123,7 @@ pub struct point2d_list_t {
 
 check_generated!(
     temperature_t,
-    r#"#[derive(Debug, LcmMessage)]
+    r#"#[derive(Debug, Message)]
 pub struct temperature_t {
     pub utime: i64,
     #[doc = " Temperature in degrees Celsius. A "float" would probably
@@ -143,7 +143,7 @@ pub struct temperature_t {
 /// ```
 check_generated!(
     member_group,
-    r#"#[derive(Debug, LcmMessage)]
+    r#"#[derive(Debug, Message)]
 pub struct member_group {
     #[doc = " A vector."]
     pub x: f64,

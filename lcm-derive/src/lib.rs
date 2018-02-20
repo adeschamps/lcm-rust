@@ -7,7 +7,7 @@ extern crate quote;
 mod parse;
 
 /// Entry point of the procedural macro.
-#[proc_macro_derive(LcmMessage, attributes(lcm))]
+#[proc_macro_derive(Message, attributes(lcm))]
 pub fn lcm_message(input: proc_macro::TokenStream) -> proc_macro::TokenStream
 {
 	let input: syn::DeriveInput = syn::parse(input).unwrap();
