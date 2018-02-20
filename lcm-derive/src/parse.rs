@@ -1,15 +1,29 @@
+use std::borrow::Cow;
 use quote;
 use syn;
 
+/// Represents a field in the Rust struct.
 #[derive(Debug)]
 pub struct Field
 {
-	pub name: String,
+	/// The name of the field.
+	pub name: syn::Ident,
+
+	/// The base type of the field.
+	///
+	/// E.g., a `Vec<i8>` has the base type of `Ty::Int8`.
 	pub base_type: Ty,
+
+	/// The dimensions of the field.
+	///
+	/// This vector is empty if the field is not some form of array. If the
+	/// field is an array, then this vector contains one entry for each array
+	/// dimension. This behavior is copied from the C version of lcmgen.
 	pub dims: Vec<Dim>,
 }
 impl Field
 {
+	/// Parses the `syn::Field` to create a new `Field`.
 	pub fn from_syn(input: &syn::Field) -> Self
 	{
 		// The name is easy but figuring out the base type and the dimensions
@@ -17,12 +31,15 @@ impl Field
 		let base_type = Ty::get_base_type(&input.ty);
 		let dims = Dim::get_dims(&input.ty, &input.attrs);
 
-		Field { name: input.ident.expect("Unnamed field").to_string(), base_type, dims }
+		Field { name: input.ident.expect("Unnamed field"), base_type, dims }
 	}
 
+	/// Returns the tokens needed to encode this field.
+	///
+	/// This will handle the field dimensions, if any.
 	pub fn encode_tokens(&self) -> quote::Tokens
 	{
-		let name = syn::Ident::from(&self.name as &str);
+		let name = self.name;
 
 		// The easiest case are the non-arrays.
 		if self.dims.is_empty() {
@@ -48,9 +65,12 @@ impl Field
 		}
 	}
 
+	/// Returns the tokens needed to decode this field.
+	///
+	/// This will handle the field dimensions, if any.
 	pub fn decode_tokens(&self) -> quote::Tokens
 	{
-		let name = syn::Ident::from(&self.name as &str);
+		let name = self.name;
 
 		if self.dims.is_empty() {
 			quote! {let #name = ::lcm::Message::decode(&mut buffer)?; }
@@ -86,6 +106,13 @@ impl Field
 		}
 	}
 
+	/// Return the tokens used to get the size of this field.
+	///
+	/// If this field is *not* a user defined base type and *not* a string,
+	/// then the returning tokens will not involve a function call to determine
+	/// the size of the field. If the field additionally does *not* include any
+	/// variable sized array, this function returns a set of tokens that can be
+	/// resolved to a constant at compile time.
 	pub fn size_tokens(&self) -> quote::Tokens
 	{
 		// If this isn't a string or a user type, we can make this a constant.
@@ -95,6 +122,10 @@ impl Field
 		}
 	}
 
+	/// Return the tokens for a type that does *not* require a function call.
+	///
+	/// Calling this on an incorrect type will produce tokens that will not
+	/// compile.
 	fn size_tokens_const(&self) -> quote::Tokens
 	{
 		let dim_multipliers = self.dims.iter().map(|d| {
@@ -112,9 +143,13 @@ impl Field
 		quote!{ (#type_size #(* #dim_multipliers)*) }
 	}
 
+	/// Return the tokens for a type that does require a function call.
+	///
+	/// Calling this on an incorrect type will produce tokens that *do* compile
+	/// but will be less efficient than otherwise possible.
 	fn size_tokens_nonconst(&self) -> quote::Tokens
 	{
-		let name = syn::Ident::from(&self.name as &str);
+		let name = self.name;
 
 		if self.dims.is_empty() {
 			quote! { ::lcm::Message::size(&self.#name)}
@@ -129,6 +164,13 @@ impl Field
 	}
 }
 
+/// Get the inner type of a `Vec`.
+///
+/// I.e., if this function is given `Vec<E>` then it will return `E`. If the
+/// supplied type is not a generic, then this function will panic. If the
+/// supplied type has more than one generic argument, only the first will be
+/// returned (because this was meant for `Vec` but just happens to work for any
+/// generic).
 fn get_vec_inner_type(t: &syn::Type) -> &syn::Type
 {
 	let segs = match *t {
@@ -151,21 +193,44 @@ fn get_vec_inner_type(t: &syn::Type) -> &syn::Type
 	}
 }
 
+/// Represents the data type of the field.
+///
+/// This type can either be one of LCM's primitives or a "user defined" type.
+/// Note that this means that any unsigned integers will be considered
+/// user-defined, but they should fail appropriately at compile time.
 #[derive(Clone, Debug)]
 pub enum Ty
 {
+	/// `int8_t`
 	Int8,
+
+	/// `int16_t`
 	Int16,
+
+	/// `int32_t`
 	Int32,
+
+	/// `int64_t`
 	Int64,
+
+	/// `float`
 	Float,
+
+	/// `double`
 	Double,
+
+	/// `string`
 	String,
+
+	/// `boolean`
 	Boolean,
+
+	/// Anything that is not an LCM primitive.
 	User(String)
 }
 impl Ty
 {
+	/// Returns `true` if this is an LCM primitive.
 	pub fn is_primitive_type(&self) -> bool
 	{
 		match *self {
@@ -174,6 +239,7 @@ impl Ty
 		}
 	}
 
+	/// Returns the string for this type.
 	pub fn as_str(&self) -> &str
 	{
 		match *self {
@@ -189,6 +255,10 @@ impl Ty
 		}
 	}
 
+	/// Returns the size of this type.
+	///
+	/// If the type does not have a size known at generation time (i.e., user
+	/// defined types and strings), this function will panic.
 	fn size(&self) -> usize
 	{
 		match *self {
@@ -199,10 +269,11 @@ impl Ty
 			Ty::Float   => ::std::mem::size_of::<f32>(),
 			Ty::Double  => ::std::mem::size_of::<f64>(),
 			Ty::Boolean => ::std::mem::size_of::<i8>(),
-			_           => panic!("Tried to get fixed size of non-primitive"),
+			_           => panic!("Bug: tried to get fixed size of non-primitive"),
 		}
 	}
 
+	/// Returns the `Type` that represents the base data type of the `syn::Type`.
 	fn get_base_type(t: &syn::Type) -> Self
 	{
 		// There are two base types allowed here. The `Path` type contains all
@@ -232,15 +303,23 @@ impl Ty
 	}
 }
 
+/// Represents a dimension for a field consisting of one or more arrays.
 #[derive(Debug)]
 pub enum Dim
 {
+	/// A dimension whose size is known at compile time.
 	Fixed(usize),
+
+	/// A dimension whose size is defined by another field in the message.
 	Variable(String),
 }
 impl Dim
 {
-	pub fn dim_type(&self) -> i8
+	/// Returns the mode of this dimension.
+	///
+	/// This really does nothing more than pretend to be a C-like enum in order
+	/// to achieve the same behavior as the C version of lcmgen.
+	pub fn mode(&self) -> i8
 	{
 		match *self {
 			Dim::Fixed(_)    => 0,
@@ -248,14 +327,16 @@ impl Dim
 		}
 	}
 
-	pub fn as_string(&self) -> String
+	/// Returns the `String` representation of this dimension.
+	pub fn as_cow(&self) -> Cow<str>
 	{
 		match *self {
-			Dim::Fixed(s)        => format!("{}", s),
-			Dim::Variable(ref s) => s.clone(),
+			Dim::Fixed(s)        => Cow::from(format!("{}", s)),
+			Dim::Variable(ref s) => Cow::from(s as &str),
 		}
 	}
 
+	/// Parses a type an its attributes to determine the dimensions.
 	fn get_dims(t: &syn::Type, attrs: &Vec<syn::Attribute>) -> Vec<Self>
 	{
 		let mut res = Vec::new();
@@ -267,6 +348,9 @@ impl Dim
 		res
 	}
 
+	/// Recursive utility function for `Dim::get_dims`.
+	///
+	/// Should not be called from anywhere except `Dim::get_dims`.
 	fn get_dims_internal(t: &syn::Type, vec_dims: &mut Vec<Self>, res: &mut Vec<Self>)
 	{
 		match *t {
@@ -287,6 +371,10 @@ impl Dim
 		}
 	}
 
+	/// Returns all of the variable length dimensions specified in the
+	/// attributes list.
+	///
+	/// Should not be called from anywhere except `Dim::get_dims`.
 	fn get_vec_dims(attrs: &Vec<syn::Attribute>) -> Vec<Self>
 	{
 		let mut sizes = Vec::new();

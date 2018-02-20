@@ -6,6 +6,7 @@ extern crate quote;
 
 mod parse;
 
+/// Entry point of the procedural macro.
 #[proc_macro_derive(LcmMessage, attributes(lcm))]
 pub fn lcm_message(input: proc_macro::TokenStream) -> proc_macro::TokenStream
 {
@@ -25,7 +26,7 @@ pub fn lcm_message(input: proc_macro::TokenStream) -> proc_macro::TokenStream
 	// Gather the tokens needed for the encode/decode process
 	let encode_tokens = fields.iter().map(|f| f.encode_tokens());
 	let decode_tokens = fields.iter().map(|f| f.decode_tokens());
-	let field_names = fields.iter().map(|f| syn::Ident::from(&f.name as &str));
+	let field_names = fields.iter().map(|f| f.name);
 	let size_tokens = fields.iter().map(|f| f.size_tokens());
 
 	// Output the implementation
@@ -40,7 +41,7 @@ pub fn lcm_message(input: proc_macro::TokenStream) -> proc_macro::TokenStream
 				Ok(())
 			}
 
-			fn decode(mut buffer: &mut Read) -> Result<Self>
+			fn decode(mut buffer: &mut ::std::io::Read) -> Result<Self>
 			{
 				#(#decode_tokens)*
 				Ok(#name {
@@ -59,13 +60,29 @@ pub fn lcm_message(input: proc_macro::TokenStream) -> proc_macro::TokenStream
 	output.into()
 }
 
+/// Calculates the hash for the type using its fields.
+///
+/// This function purposefully does *not* include the message name in the hash.
+/// Additionally, it will not include the names of any user defined type in the
+/// hash.
+///
+/// This function was based on the C version of lcmgen but it will not produce
+/// identical output as it implements the final shift at generation rather than
+/// at runtime.
 fn calculate_hash(fields: &Vec<parse::Field>) -> u64
 {
+	/// Make the hash dependent on the value of the given character.
+	///
+	/// The order that this function is called in *is* important. This function
+	/// was copied from the C version of lcmgen.
 	fn hash_update(v: i64, c: i8) -> i64
 	{
 		((v << 8) ^ (v >> 55)) + c as i64
 	}
 
+	/// Make the hash dependent on each character in a string.
+	///
+	/// This function was copied from the C version of LCM gen.
 	fn hash_string_update(v: i64, s: &[u8]) -> i64
 	{
 		s.iter().fold(hash_update(v, s.len() as i8), |acc, &c| hash_update(acc, c as i8))
@@ -75,7 +92,7 @@ fn calculate_hash(fields: &Vec<parse::Field>) -> u64
 
 	for f in fields {
 		// Hash the field name
-		v = hash_string_update(v, f.name.as_bytes());
+		v = hash_string_update(v, f.name.as_ref().as_bytes());
 
 		// Hash the type information *only* if it is a primitive type
 		if f.base_type.is_primitive_type() {
@@ -86,8 +103,8 @@ fn calculate_hash(fields: &Vec<parse::Field>) -> u64
 		v = hash_update(v, f.dims.len() as i8);
 		for d in f.dims.iter() {
 			// Hash the kind of dimension it was and the value of the dimension
-			v = hash_update(v, d.dim_type());
-			v = hash_string_update(v, d.as_string().as_bytes());
+			v = hash_update(v, d.mode());
+			v = hash_string_update(v, d.as_cow().as_bytes());
 		}
 	}
 
