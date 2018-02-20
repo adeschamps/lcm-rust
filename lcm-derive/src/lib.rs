@@ -19,6 +19,12 @@ pub fn lcm_message(input: proc_macro::TokenStream) -> proc_macro::TokenStream
 
 	// Calculate the hash of the struct
 	let hash = calculate_hash(&fields);
+	let hash_included_fields = fields.iter().filter_map(|f| {
+		match f.base_type {
+			parse::Ty::User(ref s) => Some(syn::Ident::from(s as &str)),
+			_                      => None,
+		}
+	});
 
 	// Get the name of the struct
 	let name = input.ident;
@@ -33,7 +39,10 @@ pub fn lcm_message(input: proc_macro::TokenStream) -> proc_macro::TokenStream
 	let output = quote! {
 		impl ::lcm::Message for #name
 		{
-			const HASH: u64 = #hash;
+			const HASH: u64 = {
+				const PRE_HASH: u64 = #hash #(+ <#hash_included_fields as ::lcm::Message>::HASH)*;
+				(PRE_HASH << 1) + ((PRE_HASH >> 63) & 1)
+			};
 
 			fn encode(&self, mut buffer: &mut ::std::io::Write) -> ::std::io::Result<()>
 			{
@@ -108,10 +117,5 @@ fn calculate_hash(fields: &Vec<parse::Field>) -> u64
 		}
 	}
 
-	// The following does not happen in the C version of lcmgen. The hash that
-	// version outputs is the current value of `v`. However, we can make this
-	// second step happen during codegen, so why not?
-
-	let v = v as u64;
-	(v << 1) + ((v >> 63) & 1)
+	v as u64
 }
