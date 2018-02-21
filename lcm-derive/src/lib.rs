@@ -21,7 +21,8 @@ pub fn lcm_message(input: proc_macro::TokenStream) -> proc_macro::TokenStream
 	let hash = calculate_hash(&fields);
 	let hash_included_fields = fields.iter().filter_map(|f| {
 		match f.base_type {
-			parse::Ty::User(ref s) => Some(syn::Ident::from(s as &str)),
+			//parse::Ty::User(ref s) => Some(syn::Ident::from(s as &str)),
+			parse::Ty::User(ref s) => Some(syn::parse_str::<syn::Expr>(s).expect("Failed to parse field name")),
 			_                      => None,
 		}
 	});

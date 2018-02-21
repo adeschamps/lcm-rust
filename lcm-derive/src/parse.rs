@@ -193,6 +193,58 @@ fn get_vec_inner_type(t: &syn::Type) -> &syn::Type
 	}
 }
 
+/// Convert a `syn::Type` to the string form of the type.
+fn type_to_string(t: &syn::Type) -> String
+{
+	// This whole function is a bit inefficient
+	let path = match *t {
+		syn::Type::Path(syn::TypePath { ref path, .. }) => path,
+		_ => panic!("Bug: `type_to_string` called on unknown type"),
+	};
+
+	let mut res = if path.leading_colon.is_some() { String::from("::") } else { String::new() };
+
+	for pair in path.segments.pairs() {
+		let (seg, punctuated) = match pair {
+			syn::punctuated::Pair::Punctuated(t, _) => (t, true),
+			syn::punctuated::Pair::End(t)           => (t, false),
+		};
+
+		// Add the type name
+		res.push_str(seg.ident.as_ref());
+
+		// Handle generics
+		match *seg {
+			syn::PathSegment {
+				arguments: syn::PathArguments::AngleBracketed(
+					syn::AngleBracketedGenericArguments { ref args, ..}
+				),
+				..
+			} => {
+				res.push('<');
+
+				for i in 0..args.len() - 1 {
+					if let syn::GenericArgument::Type(ref ty) = args[i] {
+						res.push_str(&type_to_string(ty));
+						res.push(',');
+					} else { panic!("Generic argument had no type"); }
+				}
+
+				if let syn::GenericArgument::Type(ref ty) = args[args.len() - 1] {
+					res.push_str(&type_to_string(ty));
+				} else { panic!("Generic argument had no type"); }
+				res.push('>');
+			},
+			_ => {}
+		}
+
+		// Add the punctuation if necessary
+		if punctuated { res.push_str("::"); }
+	}
+
+	res
+}
+
 /// Represents the data type of the field.
 ///
 /// This type can either be one of LCM's primitives or a "user defined" type.
@@ -291,7 +343,7 @@ impl Ty
 					"bool"   => Ty::Boolean,
 					"String" => Ty::String,
 					"Vec"    => Ty::get_base_type(get_vec_inner_type(t)),
-					n @ _    => Ty::User(n.to_string()),
+					_        => Ty::User(type_to_string(t)),
 				}
 			},
 			syn::Type::Array(syn::TypeArray { ref elem, ..}) => {
