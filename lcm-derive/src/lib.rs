@@ -43,7 +43,10 @@ pub fn lcm_message(input: proc_macro::TokenStream) -> proc_macro::TokenStream
 				const PRE_HASH: u64 = #hash #(+ <#hash_included_fields as ::lcm::Message>::HASH)*;
 				(PRE_HASH << 1) + ((PRE_HASH >> 63) & 1)
 			};
+        }
 
+        impl ::lcm::Marshall for #name
+        {
 			fn encode(&self, mut buffer: &mut ::std::io::Write) -> ::std::io::Result<()>
 			{
 				#(#encode_tokens)*

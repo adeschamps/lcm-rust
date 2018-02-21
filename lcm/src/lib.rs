@@ -7,8 +7,21 @@ extern crate byteorder;
 use byteorder::{NetworkEndian, ReadBytesExt, WriteBytesExt};
 use std::io::{self, Read, Write};
 
-/// A message that can be encoded and decoded according to the LCM protocol.
-pub trait Message: Sized {
+/// A type that can be encoded and decoded according to the LCM protocol.
+pub trait Marshall: Sized {
+    /// Encodes a message into a buffer.
+    /// `Lcm` uses a `Vec<u8>` with its capacity set to the value returned by [`size()`].
+    fn encode(&self, buffer: &mut Write) -> io::Result<()>;
+
+    /// Decodes a message from a buffer.
+    fn decode(buffer: &mut Read) -> io::Result<Self>;
+
+    /// Returns the number of bytes this message is expected to take when encoded.
+    fn size(&self) -> usize;
+}
+
+/// A message that can be send and received by the LCM protocol.
+pub trait Message: Marshall {
     /// Returns the message hash for this type.
     /// Returns `0` for all primitive types.
     /// Generated `Lcm` types should implement this function.
@@ -26,29 +39,17 @@ pub trait Message: Sized {
     /// Decodes a message from a buffer,
     /// and also checks that the hash at the beginning is correct.
     fn decode_with_hash(mut buffer: &mut Read) -> io::Result<Self> {
-        let hash: u64 = Message::decode(&mut buffer)?;
+        let hash: u64 = Marshall::decode(&mut buffer)?;
         if hash != Self::HASH {
             return Err(io::Error::new(io::ErrorKind::Other, "Invalid hash"));
         }
-        Message::decode(buffer)
+        Marshall::decode(buffer)
     }
-
-    /// Encodes a message into a buffer.
-    /// `Lcm` uses a `Vec<u8>` with its capacity set to the value returned by [`size()`].
-    fn encode(&self, buffer: &mut Write) -> io::Result<()>;
-
-    /// Decodes a message from a buffer.
-    fn decode(buffer: &mut Read) -> io::Result<Self>;
-
-    /// Returns the number of bytes this message is expected to take when encoded.
-    fn size(&self) -> usize;
 }
 
-macro_rules! impl_message {
+macro_rules! impl_marshall {
     ( $type:ty, $read:ident, $write:ident $(, $endian:ident )* ) => {
-        impl Message for $type {
-            const HASH: u64 = 0;
-
+        impl Marshall for $type {
             fn encode(&self, buffer: &mut Write) -> io::Result<()> {
                 buffer.$write::<$($endian),*>(*self)
             }
@@ -64,20 +65,18 @@ macro_rules! impl_message {
     };
 }
 
-impl_message!(u8, read_u8, write_u8);
-impl_message!(u64, read_u64, write_u64, NetworkEndian);
+impl_marshall!(u8, read_u8, write_u8);
+impl_marshall!(u64, read_u64, write_u64, NetworkEndian);
 
-impl_message!(i8, read_i8, write_i8);
-impl_message!(i16, read_i16, write_i16, NetworkEndian);
-impl_message!(i32, read_i32, write_i32, NetworkEndian);
-impl_message!(i64, read_i64, write_i64, NetworkEndian);
+impl_marshall!(i8, read_i8, write_i8);
+impl_marshall!(i16, read_i16, write_i16, NetworkEndian);
+impl_marshall!(i32, read_i32, write_i32, NetworkEndian);
+impl_marshall!(i64, read_i64, write_i64, NetworkEndian);
 
-impl_message!(f32, read_f32, write_f32, NetworkEndian);
-impl_message!(f64, read_f64, write_f64, NetworkEndian);
+impl_marshall!(f32, read_f32, write_f32, NetworkEndian);
+impl_marshall!(f64, read_f64, write_f64, NetworkEndian);
 
-impl Message for bool {
-    const HASH: u64 = 0;
-
+impl Marshall for bool {
     fn encode(&self, buffer: &mut Write) -> io::Result<()> {
         let value: i8 = if *self { 1 } else { 0 };
         value.encode(buffer)
@@ -100,9 +99,7 @@ impl Message for bool {
     }
 }
 
-impl Message for String {
-    const HASH: u64 = 0;
-
+impl Marshall for String {
     fn encode(&self, buffer: &mut Write) -> io::Result<()> {
         let len: i32 = self.len() as i32 + 1;
         len.encode(buffer)?;
