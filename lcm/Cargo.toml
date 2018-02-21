@@ -1,0 +1,7 @@
+[package]
+name = "lcm"
+version = "0.1.0"
+authors = ["Anthony Deschamps <anthony.j.deschamps@gmail.com>"]
+
+[dependencies]
+byteorder = "1.2.1"

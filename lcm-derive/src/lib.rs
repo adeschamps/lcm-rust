@@ -7,7 +7,7 @@ extern crate quote;
 mod parse;
 
 /// Entry point of the procedural macro.
-#[proc_macro_derive(LcmMessage, attributes(lcm))]
+#[proc_macro_derive(Message, attributes(lcm))]
 pub fn lcm_message(input: proc_macro::TokenStream) -> proc_macro::TokenStream
 {
 	let input: syn::DeriveInput = syn::parse(input).unwrap();
@@ -46,14 +46,17 @@ pub fn lcm_message(input: proc_macro::TokenStream) -> proc_macro::TokenStream
 				const PRE_HASH: u64 = #hash #(+ <#hash_included_fields as ::lcm::Message>::HASH)*;
 				(PRE_HASH << 1) + ((PRE_HASH >> 63) & 1)
 			};
+        }
 
+        impl ::lcm::Marshall for #name
+        {
 			fn encode(&self, mut buffer: &mut ::std::io::Write) -> ::std::io::Result<()>
 			{
 				#(#encode_tokens)*
 				Ok(())
 			}
 
-			fn decode(mut buffer: &mut ::std::io::Read) -> Result<Self>
+			fn decode(mut buffer: &mut ::std::io::Read) -> ::std::io::Result<Self>
 			{
 				#(#decode_tokens)*
 				Ok(#name {

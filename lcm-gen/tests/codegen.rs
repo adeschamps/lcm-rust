@@ -28,7 +28,7 @@ fn simple_struct() {
 
     let generated = codegen::generate(&module);
 
-    let expected = r#"#[derive(Debug, LcmMessage)]
+    let expected = r#"#[derive(Debug, Message)]
 pub struct MyType {
     pub field: f64,
 }
@@ -53,7 +53,7 @@ macro_rules! check_generated {
 check_generated!(
     camera_image_t,
     r#"pub mod mycorp {
-    #[derive(Debug, LcmMessage)]
+    #[derive(Debug, Message)]
     pub struct camera_image_t {
         pub utime: i64,
         pub camera_name: String,
@@ -66,30 +66,30 @@ check_generated!(
 
 check_generated!(
     comments_t,
-    r#"#[doc = " This is a comment
- that spans multiple lines"]
-#[derive(Debug, LcmMessage)]
+    r##"#[doc = r#" This is a comment
+ that spans multiple lines"#]
+#[derive(Debug, Message)]
 pub struct my_struct_t {
-    #[doc = " Horizontal position in meters."]
+    #[doc = r#" Horizontal position in meters."#]
     pub x: i32,
-    #[doc = " Vertical position in meters."]
+    #[doc = r#" Vertical position in meters."#]
     pub y: i32,
 }
-"#
+"##
 );
 
 check_generated!(
     multiple_structs,
-    r#"#[derive(Debug, LcmMessage)]
+    r#"#[derive(Debug, Message)]
 pub struct A {
     pub b: B,
     pub c: C,
 }
-#[derive(Debug, LcmMessage)]
+#[derive(Debug, Message)]
 pub struct B {
     pub a: A,
 }
-#[derive(Debug, LcmMessage)]
+#[derive(Debug, Message)]
 pub struct C {
     pub b: B,
 }
@@ -98,24 +98,24 @@ pub struct C {
 
 check_generated!(
     my_constants_t,
-    r#"#[derive(Debug, LcmMessage)]
+    r##"#[derive(Debug, Message)]
 pub struct my_constants_t {
 }
 impl my_constants_t {
-    const YELLOW: i32 = 1;
-    const GOLDENROD: i32 = 2;
-    const CANARY: i32 = 3;
-    const E: f64 = 2.8718;
+    pub const YELLOW: i32 = 1;
+    pub const GOLDENROD: i32 = 2;
+    pub const CANARY: i32 = 3;
+    pub const E: f64 = 2.8718;
 }
-"#
+"##
 );
 
 check_generated!(
     point2d_list_t,
-    r#"#[derive(Debug, LcmMessage)]
+    r#"#[derive(Debug, Message)]
 pub struct point2d_list_t {
     pub npoints: i32,
-    #[lcm(length = "npoints; 2")]
+    #[lcm(length = "npoints")]
     pub points: Vec<[f64; 2]>,
 }
 "#
@@ -123,17 +123,17 @@ pub struct point2d_list_t {
 
 check_generated!(
     temperature_t,
-    r#"#[derive(Debug, LcmMessage)]
+    r##"#[derive(Debug, Message)]
 pub struct temperature_t {
     pub utime: i64,
-    #[doc = " Temperature in degrees Celsius. A "float" would probably
+    #[doc = r#" Temperature in degrees Celsius. A "float" would probably
      * be good enough, unless we're measuring temperatures during
      * the big bang. Note that the asterisk on the beginning of this
      * line is not syntactically necessary, it's just pretty.
-     "]
+     "#]
     pub degCelsius: f64,
 }
-"#
+"##
 );
 
 /// Tests the case where multiple members share the same type:
@@ -143,14 +143,14 @@ pub struct temperature_t {
 /// ```
 check_generated!(
     member_group,
-    r#"#[derive(Debug, LcmMessage)]
+    r##"#[derive(Debug, Message)]
 pub struct member_group {
-    #[doc = " A vector."]
+    #[doc = r#" A vector."#]
     pub x: f64,
-    #[doc = " A vector."]
+    #[doc = r#" A vector."#]
     pub y: f64,
-    #[doc = " A vector."]
+    #[doc = r#" A vector."#]
     pub z: f64,
 }
-"#
+"##
 );

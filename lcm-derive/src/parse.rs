@@ -43,9 +43,9 @@ impl Field
 
 		// The easiest case are the non-arrays.
 		if self.dims.is_empty() {
-			quote! { ::lcm::Message::encode(&self.#name, &mut buffer)?; }
+			quote! { ::lcm::Marshall::encode(&self.#name, &mut buffer)?; }
 		} else {
-			let mut tokens = quote! { ::lcm::Message::encode(&item, &mut buffer)?; };
+			let mut tokens = quote! { ::lcm::Marshall::encode(item, &mut buffer)?; };
 			for dim in self.dims.iter().rev() {
 				tokens = match *dim {
 					Dim::Fixed(_) => quote! {for item in item.iter() { #tokens }},
@@ -73,9 +73,9 @@ impl Field
 		let name = self.name;
 
 		if self.dims.is_empty() {
-			quote! {let #name = ::lcm::Message::decode(&mut buffer)?; }
+			quote! {let #name = ::lcm::Marshall::decode(&mut buffer)?; }
 		} else {
-			let mut tokens = quote! { ::lcm::Message::decode(&mut buffer) };
+			let mut tokens = quote! { ::lcm::Marshall::decode(&mut buffer) };
 			let mut need_q_mark = true;
 			for d in self.dims.iter().rev() {
 				tokens = match *d {
@@ -85,7 +85,7 @@ impl Field
 						need_q_mark = false;
 
 						if old_q_mark {
-							quote! { [ #(#inner?,)* ] }
+							quote! { Ok([ #(#inner?,)* ]) }
 						} else {
 							quote! { [ #(#inner,)* ] }
 						}
@@ -93,7 +93,7 @@ impl Field
 					Dim::Variable(ref s) => {
 						let dim_name = syn::Ident::from(s as &str);
 						need_q_mark = true;
-						quote! { (0..#dim_name).map(|_| #tokens).collect::<Result<_>>() }
+						quote! { (0..#dim_name).map(|_| #tokens).collect::<Result<_, ::std::io::Error>>() }
 					}
 				};
 			}
@@ -152,9 +152,9 @@ impl Field
 		let name = self.name;
 
 		if self.dims.is_empty() {
-			quote! { ::lcm::Message::size(&self.#name)}
+			quote! { ::lcm::Marshall::size(&self.#name)}
 		} else {
-			let mut tokens = quote! { ::lcm::Message::size(&item) };
+			let mut tokens = quote! { ::lcm::Marshall::size(&item) };
 			for _ in self.dims.iter().skip(1).rev() {
 				tokens = quote!{ item.iter().map(|item| #tokens).sum::<usize>() }
 			}

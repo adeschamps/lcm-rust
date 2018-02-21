@@ -79,7 +79,7 @@ impl<'a> CodeGenerator<'a> {
         if let Some(ref comment) = s.comment {
             self.generate_comment(comment);
         }
-        self.push_line("#[derive(Debug, LcmMessage)]");
+        self.push_line("#[derive(Debug, Message)]");
         self.push_line(&format!("pub struct {} {{", s.name));
         for field in &s.fields {
             self.indent().generate_field(field);
@@ -103,12 +103,12 @@ impl<'a> CodeGenerator<'a> {
             let lengths = field
                 .multiplicity
                 .iter()
-                .map(|mult| match *mult {
-                    ast::Multiplicity::Constant(len) => len.to_string(),
-                    ast::Multiplicity::Variable(ref len) => len.to_string(),
+                .filter_map(|mult| match *mult {
+                    ast::Multiplicity::Constant(_) => None,
+                    ast::Multiplicity::Variable(ref len) => Some(format!("length = \"{}\"", len))
                 })
-                .join("; ");
-            self.push_line(&format!("#[lcm(length = \"{}\")]", lengths));
+                .join(", ");
+            self.push_line(&format!("#[lcm({})]", lengths));
         }
         self.push(&format!("pub {}: ", field.name));
         for multiplicity in &field.multiplicity {
@@ -140,13 +140,13 @@ impl<'a> CodeGenerator<'a> {
             self.generate_comment(comment);
         }
         self.push_line(&format!(
-            "const {}: {} = {};",
+            "pub const {}: {} = {};",
             constant.name, constant.ty, constant.value
         ));
     }
 
     fn generate_comment(&mut self, comment: &ast::Comment) {
-        self.push_line(&format!("#[doc = \"{}\"]", comment.0));
+        self.push_line(&format!("#[doc = r#\"{}\"#]", comment.0));
     }
 }
 
