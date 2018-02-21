@@ -84,9 +84,7 @@ fn check_length_variables(fields: &Vec<parse::Field>)
 	                 .filter_map(|(e, d)| match *d { parse::Dim::Variable(ref s) => Some((e, s)), _ => None});
 
 	for (p, length_variable_name) in dims {
-		if p == 0 { panic!("Length variable must appear before array which uses it."); }
-
-		let length_field = fields.iter().take(p - 1)
+		let length_field = fields.iter().take(p)
 		                         .find(|f| f.name.as_ref() == length_variable_name)
 		                         .expect("Length variable must appear before array which uses it.");
 
