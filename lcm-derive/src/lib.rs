@@ -17,6 +17,9 @@ pub fn lcm_message(input: proc_macro::TokenStream) -> proc_macro::TokenStream
 		fields.named.iter().map(|f| parse::Field::from_syn(f)).collect::<Vec<_>>()
 	} else { panic!("LCM only supports structs with named fields.") };
 
+	// Do some sanity checks on the fields
+	check_length_variables(&fields);
+
 	// Calculate the hash of the struct
 	let hash = calculate_hash(&fields);
 	let hash_included_fields = fields.iter().filter_map(|f| {
@@ -68,6 +71,32 @@ pub fn lcm_message(input: proc_macro::TokenStream) -> proc_macro::TokenStream
 	};
 
 	output.into()
+}
+
+/// Panics if any of the length variables are not declare before the array that
+/// uses the variable *or* if the length variable is not an integer type.
+fn check_length_variables(fields: &Vec<parse::Field>)
+{
+	// This is naive. You deserve any slowdown you get from having too many
+	// fields or dimensions. Probably.
+	let dims = fields.iter()
+	                 .enumerate()
+	                 .flat_map(|(e, f)| f.dims.iter().map(move |d| (e, d)))
+	                 .filter_map(|(e, d)| match *d { parse::Dim::Variable(ref s) => Some((e, s)), _ => None});
+
+	for (p, length_variable_name) in dims {
+		if p == 0 { panic!("Length variable must appear before array which uses it."); }
+
+		let length_field = fields.iter().take(p - 1)
+		                         .find(|f| f.name.as_ref() == length_variable_name)
+		                         .expect("Length variable must appear before array which uses it.");
+
+		match length_field.base_type {
+			parse::Ty::User(_) | parse::Ty::String |
+			parse::Ty::Float   | parse::Ty::Double => panic!("Length variable is not an integer type"),
+			_ => {},
+		}
+	}
 }
 
 /// Calculates the hash for the type using its fields.
