@@ -1,7 +1,9 @@
 [package]
 name = "lcm"
 version = "0.1.0"
-authors = ["Anthony Deschamps <anthony.j.deschamps@gmail.com>"]
+authors = ["Anthony Deschamps <anthony.j.deschamps@gmail.com>", "Nate Kent <nate@nkent.net>"]
 
 [dependencies]
+log = "0.4"
 byteorder = "1.2.1"
+lcm-derive = { git = "https://github.com/adeschamps/lcm-rust" }
