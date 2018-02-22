@@ -6,6 +6,8 @@ use Message;
 mod receiver;
 use self::receiver::Receiver;
 
+mod spsc;
+
 use std::marker::PhantomData;
 
 /// An LCM instance that handles publishing and subscribing as well as encoding

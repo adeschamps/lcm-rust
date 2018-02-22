@@ -136,6 +136,8 @@ impl Marshall for String {
 
 #[cfg(test)]
 mod test {
+    use super::*;
+
     #[test]
     fn decode_string() {
         let s: String = "Hello, world!".into();
