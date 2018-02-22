@@ -20,6 +20,7 @@ pub use lcm_derive::*;
 #[macro_use]
 extern crate log;
 extern crate byteorder;
+extern crate regex;
 
 mod lcm;
 pub use lcm::Lcm;

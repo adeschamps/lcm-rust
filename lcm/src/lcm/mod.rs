@@ -29,13 +29,14 @@ impl<'a> Lcm<'a> {
     pub fn with_settings(addr: &Ipv4Addr, port: u16, ttl: u32) -> io::Result<Self>
     {
         debug!("Creating LCM instance with lcm_url=\"udpm://{}:{}?ttl={}\"", addr, port, ttl);
-
         let receiver = Receiver::new(addr, port, ttl)?;
+
+
         unimplemented!();
     }
 
     /// Subscribes a callback to a particular topic.
-    pub fn subscribe<M, F>(&mut self, channel: &str, callback: F) -> Subscription
+    pub fn subscribe<M, F>(&mut self, channel: &str, buffer_size: usize, callback: F) -> Subscription
         where M: Message,
               F: FnMut(M) + 'a
     {
