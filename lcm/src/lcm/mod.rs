@@ -1,14 +1,13 @@
 use std::{io, thread};
 use std::sync::mpsc;
 use std::net::{Ipv4Addr, UdpSocket};
+use regex::Regex;
 use Message;
 
 mod receiver;
 use self::receiver::Receiver;
 
 mod spsc;
-
-use std::marker::PhantomData;
 
 /// An LCM instance that handles publishing and subscribing as well as encoding
 /// and decoding messages.
@@ -20,8 +19,13 @@ pub struct Lcm<'a> {
     /// queued.
     notify_rx: mpsc::Receiver<()>,
 
-    // TODO
-    _pd: PhantomData<&'a ()>,
+    /// The next available subscription ID
+    next_subscription_id: u32,
+    /// The subscriptions.
+    subscriptions: Vec<(Subscription, Box<FnMut() + 'a>)>,
+
+    /// The sequence number for the outgoing messages.
+    sequence_number: u32,
 }
 impl<'a> Lcm<'a> {
     /// Creates a new `Lcm` instance with the default settings.
@@ -41,18 +45,23 @@ impl<'a> Lcm<'a> {
         debug!("Creating LCM instance with lcm_url=\"udpm://{}:{}?ttl={}\"", addr, port, ttl);
         let socket = Lcm::setup_udp_socket(addr, port, ttl)?;
         let (notify_tx, notify_rx) = mpsc::sync_channel(1);
-        // FIXME: Do other setup (shared memory, channels, etc)
+        let (subscribe_tx, subscribe_rx) = mpsc::channel();
 
-        let receiver = Receiver::new(socket.try_clone()?, notify_tx);
+        let receiver = Receiver::new(socket.try_clone()?, notify_tx, subscribe_rx);
 
         debug!("Starting read thread");
         thread::spawn(move || {
-            receiver.run();
+            let res = receiver.run();
+            if let Err(e) = res {
+                error!("Read thread failed with message: {}", e);
+            }
         });
 
         Ok(Lcm {
             socket, notify_rx,
-            _pd: PhantomData { }
+            next_subscription_id: 0,
+            subscriptions: Vec::new(),
+            sequence_number: 0,
         })
     }
 
@@ -115,6 +124,27 @@ impl<'a> Lcm<'a> {
 /// A subscription to an LCM topic.
 ///
 /// Used to unsubscribe from a channel.
-pub struct Subscription {
-    // TODO
+#[derive(Debug)]
+pub struct Subscription(u32);
+
+/// An LCM datagram.
+///
+/// This can either be a complete datagram or a fragment of a message.
+enum Datagram<'a> {
+    Complete(&'a [u8]),
+    Fragment,
 }
+impl<'a> Datagram<'a> {
+    /// Parses raw bytes into a `Datagram`.
+    fn parse(buf: &'a [u8]) -> Result<Self, &str> {
+        unimplemented!();
+    }
+}
+
+/// Message used to subscribe to a new channel.
+type SubscribeMsg = (Regex, Box<Fn() -> io::Result<()> + Send + 'static>);
+
+/// LCM's magic number for short messages.
+const SHORT_HEADER_MAGIC: u32 = 0x3230434c;
+/// LCM's magic number for message fragments.
+const LONG_HEADER_MAGIC: u32 = 0x3330434c;
