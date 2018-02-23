@@ -73,7 +73,7 @@ impl<'a> UdpmProvider<'a> {
     /// This involves sending the `channel` and a closure to the currently
     /// running `Backend`. The closure will be used to convert the LCM datagram
     /// into an actual message type which will then be passed to the client.
-    pub fn subscribe<M, F>(&mut self, channel: Regex, buffer_size: usize, callback: F) -> Result<Subscription, SubscribeError>
+    pub fn subscribe<M, F>(&mut self, channel: Regex, buffer_size: usize, mut callback: F) -> Result<Subscription, SubscribeError>
         where M: Message + Send + 'static,
               F: FnMut(M) + 'a
     {
@@ -81,7 +81,7 @@ impl<'a> UdpmProvider<'a> {
         let (tx, rx) = spsc::channel::<M>(buffer_size);
 
         // Then create the function that will convert the bytes into a message
-        // and send it.
+        // and send it and the function that will pass things on to the callback.
         let conversion_func = move |mut bytes: &[u8]| -> Result<(), DecodeError> {
             // First try to decode the message
             let message = M::decode(&mut bytes)?;
@@ -96,15 +96,24 @@ impl<'a> UdpmProvider<'a> {
             Ok(())
         };
 
+        let callback_fn = move || {
+            if let Some(m) = rx.recv() {
+                callback(m);
+            }
+        };
+
         // Finally, create the new subscription ID
-        let sub = Subscription(self.next_subscription_id);
+        let sub_id = self.next_subscription_id;
         self.next_subscription_id += 1;
 
-        // Send it across the way and call it good.
+        // Send it across the way and then store our callback.
         match self.subscribe_tx.send((channel, Box::new(conversion_func))) {
-            Ok(_) => Ok(sub),
-            Err(_) => Err(SubscribeError::MissingProvider)
+            Ok(_)  => {},
+            Err(_) => return Err(SubscribeError::MissingProvider),
         }
+        self.subscriptions.push((Subscription(sub_id), Box::new(callback_fn)));
+
+        Ok(Subscription(sub_id))
     }
 
     /// Unsubscribes a message handler.
