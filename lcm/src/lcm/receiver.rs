@@ -1,6 +1,6 @@
 use std::io;
 use std::sync::mpsc;
-use std::net::UdpSocket;
+use std::net::{UdpSocket, SocketAddr};
 use super::{Datagram, SubscribeMsg};
 
 /// The LCM backend used for receiving messages without blocking the main
