@@ -5,6 +5,7 @@ use std::net::{Ipv4Addr, UdpSocket};
 use regex::Regex;
 
 use {Message, Subscription};
+use error::*;
 use utils::spsc;
 
 mod datagram;
@@ -68,7 +69,7 @@ impl<'a> UdpmProvider<'a> {
     /// This involves sending the `channel` and a closure to the currently
     /// running `Backend`. The closure will be used to convert the LCM datagram
     /// into an actual message type which will then be passed to the client.
-    pub fn subscribe<M, F>(&mut self, channel: Regex, buffer_size: usize, callback: F) -> Subscription
+    pub fn subscribe<M, F>(&mut self, channel: Regex, buffer_size: usize, callback: F) -> Result<Subscription, SubscribeError>
         where M: Message,
               F: FnMut(M) + 'a
     {

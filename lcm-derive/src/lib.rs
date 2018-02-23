@@ -1,3 +1,5 @@
+#![recursion_limit="128"]
+
 extern crate proc_macro;
 extern crate syn;
 
@@ -59,13 +61,13 @@ pub fn lcm_message(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
         impl ::lcm::Marshall for #name
         {
-            fn encode(&self, mut buffer: &mut ::std::io::Write) -> ::std::io::Result<()>
+            fn encode(&self, mut buffer: &mut ::std::io::Write) -> Result<(), ::lcm::error::EncodeError>
             {
                 #(#encode_tokens)*
                 Ok(())
             }
 
-            fn decode(mut buffer: &mut ::std::io::Read) -> ::std::io::Result<Self>
+            fn decode(mut buffer: &mut ::std::io::Read) -> Result<Self, ::lcm::error::DecodeError>
             {
                 #(#decode_tokens)*
                 Ok(#name {

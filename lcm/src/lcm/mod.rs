@@ -34,12 +34,13 @@ impl<'a> Lcm<'a> {
         where M: Message,
               F: FnMut(M) + 'a
     {
+        // We can't just use the `?` operator since we need the channel name for context.
         let re = match Regex::new(channel) {
             Ok(re) => re,
             Err(e) => return Err(SubscribeError::InvalidRegex { channel: channel.into(), regex_error: e }),
         };
 
-        Ok(self.vtable.subscribe(re, buffer_size, callback))
+        self.vtable.subscribe(re, buffer_size, callback)
     }
 
     /// Unsubscribes a message handler.

@@ -1,7 +1,9 @@
 use std::io;
 use std::time::Duration;
 use regex::Regex;
+
 use {Message, Provider, Subscription};
+use error::*;
 
 mod udpm;
 use self::udpm::UdpmProvider;
@@ -20,7 +22,7 @@ impl<'a> VTable<'a> {
     }
 
     /// Subscribe to a topic.
-    pub fn subscribe<M, F>(&mut self, channel: Regex, buffer_size: usize, callback: F) -> Subscription
+    pub fn subscribe<M, F>(&mut self, channel: Regex, buffer_size: usize, callback: F) -> Result<Subscription, SubscribeError>
         where M: Message,
               F: FnMut(M) + 'a
     {
