@@ -2,7 +2,6 @@ use std::io;
 use std::time::Duration;
 use regex::{self, Regex};
 
-mod spsc;
 mod provider;
 
 use {Message, Provider};

@@ -22,6 +22,8 @@ extern crate log;
 extern crate byteorder;
 extern crate regex;
 
+mod utils;
+
 mod lcm;
 pub use lcm::{Lcm, Subscription};
 
