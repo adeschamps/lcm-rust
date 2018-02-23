@@ -23,7 +23,7 @@ extern crate byteorder;
 extern crate regex;
 
 mod lcm;
-pub use lcm::Lcm;
+pub use lcm::{Lcm, Provider};
 
 mod message;
 pub use message::{Message, Marshall};

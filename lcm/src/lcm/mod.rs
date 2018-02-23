@@ -5,9 +5,12 @@ use regex::Regex;
 use Message;
 
 mod receiver;
-use self::receiver::Receiver;
-
 mod spsc;
+mod provider;
+
+pub use self::provider::Provider;
+
+use self::receiver::Receiver;
 
 /// An LCM instance that handles publishing and subscribing as well as encoding
 /// and decoding messages.
