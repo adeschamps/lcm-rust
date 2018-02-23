@@ -19,10 +19,15 @@ pub use lcm_derive::*;
 
 #[macro_use]
 extern crate log;
+
+#[macro_use]
+extern crate failure;
 extern crate byteorder;
 extern crate regex;
 
 mod utils;
+
+pub mod error;
 
 mod lcm;
 pub use lcm::{Lcm, Subscription};

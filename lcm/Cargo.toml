@@ -6,5 +6,6 @@ authors = ["Anthony Deschamps <anthony.j.deschamps@gmail.com>", "Nate Kent <nate
 [dependencies]
 log = "0.4"
 byteorder = "1.2.1"
+failure = "0.1"
 regex = "0.2"
-lcm-derive = { git = "https://github.com/adeschamps/lcm-rust" }
+lcm-derive = { path = "../lcm-derive" }

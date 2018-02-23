@@ -1,10 +1,10 @@
-use std::io;
 use std::time::Duration;
-use regex::{self, Regex};
+use regex::Regex;
 
 mod provider;
 
 use {Message, Provider};
+use error::*;
 use self::provider::VTable;
 
 
@@ -19,7 +19,7 @@ pub struct Lcm<'a> {
 }
 impl<'a> Lcm<'a> {
     /// Creates a new `Lcm` instance using the specified provider.
-    pub fn new(provider: Provider) -> io::Result<Self> {
+    pub fn new(provider: Provider) -> Result<Self, ProviderStartError> {
         Ok(Lcm {
             vtable: VTable::new(provider)?,
         })
@@ -30,11 +30,15 @@ impl<'a> Lcm<'a> {
     /// The input is interpreted as a regular expression. Unlike the C
     /// implementation of LCM, the expression is *not* implicitly surrounded
     /// by '^' and '$'.
-    pub fn subscribe<M, F>(&mut self, channel: &str, buffer_size: usize, callback: F) -> Result<Subscription, regex::Error>
+    pub fn subscribe<M, F>(&mut self, channel: &str, buffer_size: usize, callback: F) -> Result<Subscription, SubscribeError>
         where M: Message,
               F: FnMut(M) + 'a
     {
-        let re = Regex::new(channel)?;
+        let re = match Regex::new(channel) {
+            Ok(re) => re,
+            Err(e) => return Err(SubscribeError::InvalidRegex { channel: channel.into(), regex_error: e }),
+        };
+
         Ok(self.vtable.subscribe(re, buffer_size, callback))
     }
 
