@@ -23,7 +23,7 @@ impl<'a> VTable<'a> {
 
     /// Subscribe to a topic.
     pub fn subscribe<M, F>(&mut self, channel: Regex, buffer_size: usize, callback: F) -> Result<Subscription, SubscribeError>
-        where M: Message,
+        where M: Message + Send + 'static,
               F: FnMut(M) + 'a
     {
         match *self {

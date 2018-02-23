@@ -113,6 +113,12 @@ pub enum DecodeError {
     #[fail(display = "String is missing null terminator.")]
     MissingNullTerminator,
 
+    /// The message channel was closed.
+    ///
+    /// Probably represents an unsubscription.
+    #[fail(display = "Message channel was closed.")]
+    MessageChannelClosed,
+
     /// An error while writing to the buffer.
     #[fail(display = "Error while writing to the buffer.")]
     WriteErr {

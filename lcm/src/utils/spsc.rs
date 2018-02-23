@@ -70,6 +70,11 @@ impl<T> Sender<T> {
     pub fn capacity(&self) -> usize {
         (*self.inner).capacity
     }
+
+    /// Returns true if the receiving end of the channel is closed.
+    pub fn is_closed(&self) -> bool {
+        Arc::strong_count(&self.inner) < 2
+    }
 }
 unsafe impl<T: Send> Send for Sender<T> {}
 //impl<T> !Sync for Sender<T> { }

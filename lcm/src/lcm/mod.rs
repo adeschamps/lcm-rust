@@ -31,7 +31,7 @@ impl<'a> Lcm<'a> {
     /// implementation of LCM, the expression is *not* implicitly surrounded
     /// by '^' and '$'.
     pub fn subscribe<M, F>(&mut self, channel: &str, buffer_size: usize, callback: F) -> Result<Subscription, SubscribeError>
-        where M: Message,
+        where M: Message + Send + 'static,
               F: FnMut(M) + 'a
     {
         // We can't just use the `?` operator since we need the channel name for context.

@@ -4,7 +4,8 @@ use std::sync::mpsc;
 use std::net::{Ipv4Addr, UdpSocket};
 use regex::Regex;
 
-use {Message, Subscription};
+use Message;
+use lcm::Subscription;
 use error::*;
 use utils::spsc;
 
@@ -13,7 +14,7 @@ mod backend;
 use self::backend::Backend;
 
 /// Message used to subscribe to a new channel.
-type SubscribeMsg = (Regex, Box<Fn() -> io::Result<()> + Send + 'static>);
+type SubscribeMsg = (Regex, Box<Fn(&[u8]) -> Result<(), DecodeError> + Send + 'static>);
 
 /// The UDP Multicast provider.
 ///
@@ -33,6 +34,8 @@ pub struct UdpmProvider<'a> {
     next_subscription_id: u32,
     /// The subscriptions.
     subscriptions: Vec<(Subscription, Box<FnMut() + 'a>)>,
+    /// The channel used to notify the backend of new subscriptions.
+    subscribe_tx: mpsc::Sender<SubscribeMsg>,
 
     /// The sequence number for the outgoing messages.
     sequence_number: u32,
@@ -60,6 +63,7 @@ impl<'a> UdpmProvider<'a> {
             socket, notify_rx,
             next_subscription_id: 0,
             subscriptions: Vec::new(),
+            subscribe_tx,
             sequence_number: 0,
         })
     }
@@ -70,10 +74,37 @@ impl<'a> UdpmProvider<'a> {
     /// running `Backend`. The closure will be used to convert the LCM datagram
     /// into an actual message type which will then be passed to the client.
     pub fn subscribe<M, F>(&mut self, channel: Regex, buffer_size: usize, callback: F) -> Result<Subscription, SubscribeError>
-        where M: Message,
+        where M: Message + Send + 'static,
               F: FnMut(M) + 'a
     {
-        unimplemented!();
+        // Create the channel used to send the message back from the backend
+        let (tx, rx) = spsc::channel::<M>(buffer_size);
+
+        // Then create the function that will convert the bytes into a message
+        // and send it.
+        let conversion_func = move |mut bytes: &[u8]| -> Result<(), DecodeError> {
+            // First try to decode the message
+            let message = M::decode(&mut bytes)?;
+
+            // Then double check that the channel isn't closed
+            if tx.is_closed() {
+                return Err(DecodeError::MessageChannelClosed);
+            }
+
+            // Otherwise, but it in the queue and call it a day.
+            tx.send(message);
+            Ok(())
+        };
+
+        // Finally, create the new subscription ID
+        let sub = Subscription(self.next_subscription_id);
+        self.next_subscription_id += 1;
+
+        // Send it across the way and call it good.
+        match self.subscribe_tx.send((channel, Box::new(conversion_func))) {
+            Ok(_) => Ok(sub),
+            Err(_) => Err(SubscribeError::MissingProvider)
+        }
     }
 
     /// Unsubscribes a message handler.
