@@ -1,4 +1,5 @@
 use std::{io, thread};
+use std::time::Duration;
 use std::sync::mpsc;
 use std::net::{Ipv4Addr, UdpSocket};
 use regex::Regex;
@@ -37,7 +38,7 @@ pub struct UdpmProvider<'a> {
 }
 impl<'a> UdpmProvider<'a> {
     /// Creates a new UDPM provider using the given settings.
-    pub fn with_settings(addr: &Ipv4Addr, port: u16, ttl: u32) -> io::Result<Self>
+    pub fn new(addr: Ipv4Addr, port: u16, ttl: u32) -> io::Result<Self>
     {
         debug!("Creating LCM provider with lcm_url=\"udpm://{}:{}?ttl={}\"", addr, port, ttl);
         let socket = UdpmProvider::setup_udp_socket(addr, port, ttl)?;
@@ -63,7 +64,11 @@ impl<'a> UdpmProvider<'a> {
     }
 
     /// Subscribes a callback to a particular topic.
-    pub fn subscribe<M, F>(&mut self, channel: &str, buffer_size: usize, callback: F) -> Subscription
+    ///
+    /// This involves sending the `channel` and a closure to the currently
+    /// running `Backend`. The closure will be used to convert the LCM datagram
+    /// into an actual message type which will then be passed to the client.
+    pub fn subscribe<M, F>(&mut self, channel: Regex, buffer_size: usize, callback: F) -> Subscription
         where M: Message,
               F: FnMut(M) + 'a
     {
@@ -71,24 +76,41 @@ impl<'a> UdpmProvider<'a> {
     }
 
     /// Unsubscribes a message handler.
+    ///
+    /// All this will do is delete the subscription from the `Vec`. The backend
+    /// will determine that the topic has been unsubscribed since the SPSC
+    /// channel used to send messages will be closed.
     pub fn unsubscribe(&mut self, subscription: Subscription) {
         unimplemented!();
     }
 
     /// Publishes a message on the specified channel.
+    ///
+    /// This message will be sent directly by the `UdpmProvider` without being
+    /// sent to the backend.
     pub fn publish<M>(&mut self, channel: &str, message: &M)
         where M: Message
     {
         unimplemented!();
     }
 
-    /// Waits for and dispatches the next incoming message.
+    /// Waits for and dispatches messages.
+    ///
+    /// Blocks on the `notify_rx` channel until a message comes through and
+    /// then runs the callback on all available messages.
     pub fn handle(&mut self) {
         unimplemented!();
     }
 
+    /// Waits for and dispatches messages, with a timeout.
+    ///
+    /// Does the same thing as `UdpmProvider::handle` but with a timeout.
+    pub fn handle_timeout(&mut self, timeout: Duration) {
+        unimplemented!();
+    }
+
     /// Set up the UDP socket.
-    fn setup_udp_socket(addr: &Ipv4Addr, port: u16, ttl: u32) -> io::Result<UdpSocket> {
+    fn setup_udp_socket(addr: Ipv4Addr, port: u16, ttl: u32) -> io::Result<UdpSocket> {
         use std::net::{SocketAddr, IpAddr};
 
         debug!("Binding UDP socket");
@@ -109,7 +131,7 @@ impl<'a> UdpmProvider<'a> {
         warn!("Not checking receive buffer size");
 
         debug!("Joining multicast group");
-        socket.join_multicast_v4(addr, &Ipv4Addr::new(0, 0, 0, 0))?;
+        socket.join_multicast_v4(&addr, &Ipv4Addr::new(0, 0, 0, 0))?;
 
         debug!("Setting multicast packet TTL to {}", ttl);
         socket.set_multicast_ttl_v4(ttl)?;

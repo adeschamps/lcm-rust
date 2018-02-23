@@ -443,7 +443,7 @@ mod test {
         // of unsafe code. Now that it does, trying to add those blocks would
         // be both a pain and ugly, particularly since I am very confident that
         // I manually padded things correctly. This test confirms that there is
-        // no padding in the struct so the absense of `packed` changes nothing.
+        // no padding in the struct so the absence of `packed` changes nothing.
         use super::*;
         use std::mem::size_of;
 
