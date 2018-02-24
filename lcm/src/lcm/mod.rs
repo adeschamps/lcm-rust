@@ -76,7 +76,10 @@ impl<'a> Lcm<'a> {
 
             _ => return Err(LcmInitError::UnknownProvider(provider_name.into())),
         };
-        unimplemented!();
+
+        Ok(Lcm {
+            provider
+        })
     }
 
     /// Subscribes a callback to a particular topic.
@@ -135,5 +138,31 @@ pub enum Provider<'a> {
 
 /// Parses the string into its LCM URL components.
 fn parse_lcm_url(lcm_url: &str) -> Result<(&str, &str, HashMap<&str, &str>), LcmInitError> {
-    unimplemented!();
+    // Start by parsing the provider string
+    let (provider, remaining) = if let Some(p) = lcm_url.find("://") {
+        let (p, r) = lcm_url.split_at(p);
+        (p, &r[3..])
+    } else { return Err(LcmInitError::InvalidLcmUrl) };
+
+    // Then split the network string from the options.
+    let (network, options) = if let Some(p) = remaining.rfind('?') {
+        let (n, o) = remaining.split_at(p);
+        (n, &o[1..])
+    } else { (remaining, "") };
+
+    // Now we convert the options string into a map
+    let options = match options {
+        "" => HashMap::new(),
+        _ => {
+            options.split('&').map(|s| {
+                if let Some(p) = s.find('=') {
+                    let (a, v) = s.split_at(p);
+                    Ok((a, &v[1..]))
+                } else { Err(LcmInitError::InvalidLcmUrl) }
+            }).collect::<Result<_, _>>()?
+        }
+    };
+
+    // Then we can return it all
+    Ok((provider, network, options))
 }
