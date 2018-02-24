@@ -1,4 +1,5 @@
 use std::{io, thread};
+use std::collections::HashMap;
 use std::time::Duration;
 use std::sync::mpsc;
 use std::net::{Ipv4Addr, UdpSocket};
@@ -42,9 +43,18 @@ pub struct UdpmProvider<'a> {
 }
 impl<'a> UdpmProvider<'a> {
     /// Creates a new UDPM provider using the given settings.
-    pub fn new(addr: Ipv4Addr, port: u16, ttl: u32) -> io::Result<Self>
+    pub fn new(network: &str, options: HashMap<&str, &str>) -> Result<Self, LcmInitError>
     {
-        debug!("Creating LCM provider with lcm_url=\"udpm://{}:{}?ttl={}\"", addr, port, ttl);
+        // Parse the network string into the address and port
+        let (addr, port) = UdpmProvider::parse_network_string(network)?;
+
+        // Get the TTL value
+        let ttl = match options.get("ttl").unwrap_or(&"0").parse() {
+            Ok(ttl) => ttl,
+            Err(_) => return Err(LcmInitError::InvalidLcmUrl),
+        };
+
+        debug!("Starting UDPM provider with multicast (addr = {}, port = {}, ttl = {})", addr, port, ttl);
         let socket = UdpmProvider::setup_udp_socket(addr, port, ttl)?;
         let (notify_tx, notify_rx) = mpsc::sync_channel(1);
         let (subscribe_tx, subscribe_rx) = mpsc::channel();
@@ -148,6 +158,44 @@ impl<'a> UdpmProvider<'a> {
     /// Does the same thing as `UdpmProvider::handle` but with a timeout.
     pub fn handle_timeout(&mut self, timeout: Duration) {
         unimplemented!();
+    }
+
+    /// Parse the network string into the address and port components.
+    fn parse_network_string(network: &str) -> Result<(Ipv4Addr, u16), LcmInitError> {
+        // We can't just parse this, since we need to provide default values.
+        let (addr, port)  = match network.find(':') {
+            Some(p) => {
+                let (a, p) = network.split_at(p);
+                (a, &p[1..])
+            },
+            None => (network, ""),
+        };
+
+        // Supply the defaults if no value supplied
+        let addr = if addr.is_empty() {
+            "239.255.76.67"
+        } else {
+            debug!("No IP address supplied. Using default.");
+            addr
+        };
+        let port = if port.is_empty() {
+            "7667"
+        } else {
+            debug!("No port supplied. Using default.");
+            port
+        };
+
+        // Parse them into their respective types
+        let addr = match addr.parse() {
+            Ok(a) => a,
+            Err(_) => return Err(LcmInitError::InvalidLcmUrl),
+        };
+        let port = match port.parse() {
+            Ok(p) => p,
+            Err(_) => return Err(LcmInitError::InvalidLcmUrl),
+        };
+
+        Ok((addr, port))
     }
 
     /// Set up the UDP socket.
