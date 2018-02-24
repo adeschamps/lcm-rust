@@ -4,14 +4,14 @@ use regex;
 /// An error indicating that there was a failure to start the `Provider`.
 #[derive(Debug, Fail)]
 #[fail(display = "Failed to start LCM provider.")]
-pub struct ProviderStartError {
+pub struct LcmInitError {
     #[cause]
     io_error: io::Error,
 }
 
-impl From<io::Error> for ProviderStartError {
+impl From<io::Error> for LcmInitError {
     fn from(io_error: io::Error) -> Self {
-        ProviderStartError { io_error }
+        LcmInitError { io_error }
     }
 }
 
@@ -20,17 +20,18 @@ impl From<io::Error> for ProviderStartError {
 #[derive(Debug, Fail)]
 pub enum SubscribeError {
     /// The provided string was an invalid regular expression.
-    #[fail(display = "Invalid regular expression used to subscribe to channel: \"{}\".", channel)]
-    InvalidRegex {
-        channel: String,
-
-        #[cause]
-        regex_error: regex::Error,
-    },
+    #[fail(display = "Invalid regular expression used to subscribe to channel.")]
+    InvalidRegex(#[cause] regex::Error),
 
     /// The provider is no longer active.
     #[fail(display = "The provider is no longer active.")]
     MissingProvider,
+}
+
+impl From<regex::Error> for SubscribeError {
+    fn from(regex_error: regex::Error) -> Self {
+        SubscribeError::InvalidRegex(regex_error)
+    }
 }
 
 /// Indicates that an error occured while trying to handle messages.

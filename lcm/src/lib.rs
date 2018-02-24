@@ -34,6 +34,3 @@ pub use lcm::{Lcm, Subscription};
 
 mod message;
 pub use message::{Message, Marshall};
-
-mod provider;
-pub use provider::Provider;

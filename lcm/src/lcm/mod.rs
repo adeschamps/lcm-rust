@@ -1,11 +1,25 @@
+use std::env;
 use std::time::Duration;
 use regex::Regex;
 
-mod provider;
+mod providers;
+use self::providers::udpm::UdpmProvider;
 
-use {Message, Provider};
+use Message;
 use error::*;
-use self::provider::VTable;
+
+/// Convenience macro for dispatching functions among providers.
+macro_rules! provider
+{
+    ($self:ident.$func:ident($($args:expr),*)) => {
+        match $self.provider {
+            Provider::Udpm(ref mut p) => p.$func($($args),*),
+
+            #[cfg(feature = "file")]
+            Provider::File(ref mut p) => p.$func($($args),*),
+        }
+    }
+}
 
 
 /// An LCM instance that handles publishing and subscribing as well as encoding
@@ -14,15 +28,23 @@ pub struct Lcm<'a> {
     /// The backing provider.
     ///
     /// This provider basically does all of the work, with the `Lcm` struct
-    /// being a unified frontend. The name comes from the C implementation.
-    vtable: VTable<'a>,
+    /// being a unified frontend.
+    provider: Provider<'a>,
 }
 impl<'a> Lcm<'a> {
-    /// Creates a new `Lcm` instance using the specified provider.
-    pub fn new(provider: Provider) -> Result<Self, ProviderStartError> {
-        Ok(Lcm {
-            vtable: VTable::new(provider)?,
-        })
+    /// Creates a new `Lcm` instance.
+    ///
+    /// This uses the `LCM_DEFAULT_URL` environment variable to construct a
+    /// provider. If the variable does not exist or is empty, it will use the
+    /// LCM default of "udpm://239.255.76.67:7667?ttl=0".
+    pub fn new() -> Result<Self, LcmInitError> {
+        unimplemented!();
+    }
+
+    /// Create a new `Lcm` instance with the provider constructed from the
+    /// supplied LCM URL.
+    pub fn with_lcm_url(lcm_url: &str) -> Result<Self, LcmInitError> {
+        unimplemented!();
     }
 
     /// Subscribes a callback to a particular topic.
@@ -34,35 +56,32 @@ impl<'a> Lcm<'a> {
         where M: Message + Send + 'static,
               F: FnMut(M) + 'a
     {
-        // We can't just use the `?` operator since we need the channel name for context.
-        let re = match Regex::new(channel) {
-            Ok(re) => re,
-            Err(e) => return Err(SubscribeError::InvalidRegex { channel: channel.into(), regex_error: e }),
-        };
+        let re = Regex::new(channel)?;
 
-        self.vtable.subscribe(re, buffer_size, callback)
+        // Dispatch the subscription request
+        provider!(self.subscribe(re, buffer_size, callback))
     }
 
     /// Unsubscribes a message handler.
     pub fn unsubscribe(&mut self, subscription: Subscription) {
-        self.vtable.unsubscribe(subscription);
+        provider!(self.unsubscribe(subscription))
     }
 
     /// Publishes a message on the specified channel.
     pub fn publish<M>(&mut self, channel: &str, message: &M)
         where M: Message
     {
-        self.vtable.publish(channel, message);
+        provider!(self.publish(channel, message))
     }
 
     /// Waits for and dispatches messages.
     pub fn handle(&mut self) {
-        self.vtable.handle();
+        provider!(self.handle())
     }
 
     /// Waits for and dispatches messages, with a timeout.
     pub fn handle_timeout(&mut self, timeout: Duration) {
-        self.vtable.handle_timeout(timeout);
+        provider!(self.handle_timeout(timeout))
     }
 }
 
@@ -71,3 +90,13 @@ impl<'a> Lcm<'a> {
 /// Used to unsubscribe from a channel.
 #[derive(Debug)]
 pub struct Subscription(u32);
+
+/// The backing providers for the `Lcm` type.
+pub enum Provider<'a> {
+    /// The UDP Multicast provider.
+    Udpm(UdpmProvider<'a>),
+
+    /// The log file provider.
+    #[cfg(feature = "file")]
+    File(FileProvider<'a>),
+}
