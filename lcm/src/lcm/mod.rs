@@ -1,4 +1,5 @@
 use std::env;
+use std::collections::HashMap;
 use std::time::Duration;
 use regex::Regex;
 
@@ -21,6 +22,10 @@ macro_rules! provider
     }
 }
 
+/// Default LCM URL to be used when the "LCM_DEFAULT_URL" environment variable
+/// is not available.
+const LCM_DEFAULT_URL: &'static str = "udpm://239.255.76.67:7667?ttl=0";
+
 
 /// An LCM instance that handles publishing and subscribing as well as encoding
 /// and decoding messages.
@@ -38,12 +43,39 @@ impl<'a> Lcm<'a> {
     /// provider. If the variable does not exist or is empty, it will use the
     /// LCM default of "udpm://239.255.76.67:7667?ttl=0".
     pub fn new() -> Result<Self, LcmInitError> {
-        unimplemented!();
+        let lcm_default_url = env::var("LCM_DEFAULT_URL");
+        let lcm_url = match lcm_default_url {
+            Ok(ref s) if s.is_empty() => {
+                debug!("LCM_DEFAULT_URL available but empty. Using default settings.");
+                LCM_DEFAULT_URL
+            },
+            Ok(ref s) => {
+                debug!("LCM_DEFAULT_URL=\"{}\"", s);
+                s
+            },
+            Err(_) => {
+                debug!("LCM_DEFAULT_URL not present or unavailable. Using default settings.");
+                LCM_DEFAULT_URL
+            }
+        };
+
+        Lcm::with_lcm_url(lcm_url)
     }
 
     /// Create a new `Lcm` instance with the provider constructed from the
     /// supplied LCM URL.
     pub fn with_lcm_url(lcm_url: &str) -> Result<Self, LcmInitError> {
+        debug!("Creating LCM instance using \"{}\"", lcm_url);
+        let (provider_name, network, options) = parse_lcm_url(lcm_url)?;
+
+        let provider = match provider_name {
+            "udpm" => Provider::Udpm(UdpmProvider::new(network, options)?),
+
+            #[cfg(feature = "file")]
+            "file" => Provider::File(FileProvider::new(network, options)?),
+
+            _ => return Err(LcmInitError::UnknownProvider(provider_name.into())),
+        };
         unimplemented!();
     }
 
@@ -99,4 +131,9 @@ pub enum Provider<'a> {
     /// The log file provider.
     #[cfg(feature = "file")]
     File(FileProvider<'a>),
+}
+
+/// Parses the string into its LCM URL components.
+fn parse_lcm_url(lcm_url: &str) -> Result<(&str, &str, HashMap<&str, &str>), LcmInitError> {
+    unimplemented!();
 }

@@ -4,14 +4,23 @@ use regex;
 /// An error indicating that there was a failure to start the `Provider`.
 #[derive(Debug, Fail)]
 #[fail(display = "Failed to start LCM provider.")]
-pub struct LcmInitError {
-    #[cause]
-    io_error: io::Error,
+pub enum LcmInitError {
+    /// The provider failed to start.
+    #[fail(display = "Failed to start the LCM provider.")]
+    ProviderStart(#[cause] io::Error),
+
+    /// The provider is not known.
+    #[fail(display = "Unknown provider \"{}\"", _0)]
+    UnknownProvider(String),
+
+    /// The LCM URL was not valid.
+    #[fail(display = "The LCM URL was not valid")]
+    InvalidLcmUrl,
 }
 
 impl From<io::Error> for LcmInitError {
     fn from(io_error: io::Error) -> Self {
-        LcmInitError { io_error }
+        LcmInitError::ProviderStart(io_error)
     }
 }
 
