@@ -96,7 +96,7 @@ pub enum HandleError {
 }
 
 impl From<mpsc::RecvError> for HandleError {
-    fn from(recv_error: mpsc::RecvError) -> Self {
+    fn from(_: mpsc::RecvError) -> Self {
         HandleError::MissingProvider
     }
 }

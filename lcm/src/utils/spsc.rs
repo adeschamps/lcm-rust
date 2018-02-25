@@ -37,6 +37,7 @@ impl<T> Receiver<T> {
         (*self.inner).pop()
     }
 
+    /// Returns the maximum number of items that this queue can hold.
     pub fn capacity(&self) -> usize {
         (*self.inner).capacity
     }
@@ -65,10 +66,6 @@ impl<T> Sender<T> {
     /// drop on the object.
     pub fn send(&self, item: T) {
         (*self.inner).push(item);
-    }
-
-    pub fn capacity(&self) -> usize {
-        (*self.inner).capacity
     }
 
     /// Returns true if the receiving end of the channel is closed.

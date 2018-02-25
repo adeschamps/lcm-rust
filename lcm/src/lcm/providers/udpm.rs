@@ -5,7 +5,7 @@ use std::time::Duration;
 use std::sync::mpsc;
 use std::net::{SocketAddr, Ipv4Addr, UdpSocket};
 use regex::Regex;
-use byteorder::{ByteOrder, NetworkEndian, WriteBytesExt};
+use byteorder::{NetworkEndian, WriteBytesExt};
 
 use Message;
 use lcm::Subscription;
@@ -333,6 +333,7 @@ impl<'a> UdpmProvider<'a> {
             }
 
             remaining_message = &remaining_message[amount_written..];
+            fragment_offset += amount_written as u32;
         }
 
         Ok(())
