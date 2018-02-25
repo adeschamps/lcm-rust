@@ -30,6 +30,9 @@ pub const MAX_DATAGRAM_SIZE: usize = 1400;
 /// The C version of LCM discards any message greater than this size.
 pub const MAX_MESSAGE_SIZE: usize = 1 << 28;
 
+/// The maximum allow number of bytes in a channel name.
+pub const MAX_CHANNEL_NAME_LENGTH: usize = 63;
+
 /// The header size for small datagrams.
 pub const SMALL_HEADER_SIZE: usize = 8;
 
@@ -169,7 +172,9 @@ impl<'a> UdpmProvider<'a> {
     {
         let message_buf = message.encode_with_hash()?;
 
-        // TODO: What to do when the channel name is too long?
+        if channel.len() > MAX_CHANNEL_NAME_LENGTH {
+            return Err(PublishError::ChannelNameTooLong);
+        }
 
         if message_buf.len() > MAX_MESSAGE_SIZE {
             return Err(PublishError::MessageTooLarge);
@@ -393,6 +398,9 @@ pub struct Backend {
     /// The list of subscribed channels and the closure used to send the
     /// messages back to the provider object.
     subscriptions: Vec<SubscribeMsg>,
+
+    /// Partially complete messages.
+    fragments: HashMap<SocketAddr, FragmentBuffer>,
 }
 impl Backend {
     /// Create a `Backend` with the specified channels.
@@ -400,6 +408,7 @@ impl Backend {
         Backend {
             socket, notify_tx, subscribe_rx,
             subscriptions: Vec::new(),
+            fragments: HashMap::new(),
         }
     }
 
@@ -452,7 +461,7 @@ impl Backend {
     fn process_short_datagram(&mut self, datagram: &[u8]) -> bool {
         use std::str;
 
-        trace!("Incoming short datagram");
+        trace!("Incoming short datagram.");
 
         // Find the channel name. Anything after that is the message.
         let (channel, message) = {
@@ -474,22 +483,93 @@ impl Backend {
             }
         };
 
-        self.forward_message(channel, message)
+        Backend::forward_message(&mut self.subscriptions, channel, message)
     }
 
     /// Retrieve the message portion from a fragment datagram.
     fn process_frag_datagram(&mut self, datagram: &[u8], sender: SocketAddr) -> bool {
-        unimplemented!();
+        use std::str;
+
+        trace!("Incoming fragment datagram.");
+
+        let sequence_number = NetworkEndian::read_u32(&datagram[4..8]);
+        let payload_size = NetworkEndian::read_u32(&datagram[8..12]) as usize;
+        let fragment_offset = NetworkEndian::read_u32(&datagram[12..16]) as usize;
+        let fragment_number = NetworkEndian::read_u16(&datagram[16..18]);
+        let n_fragments = NetworkEndian::read_u16(&datagram[18..20]);
+
+        if payload_size > MAX_DATAGRAM_SIZE {
+            debug!("Huge datagram. Dropping");
+        }
+
+        trace!("Received fragment number {} out of {}.", fragment_number, n_fragments);
+
+        let fragment = self.fragments.entry(sender).or_insert_with(|| {
+            FragmentBuffer {
+                parts_remaining: 0,
+                sequence_number: 0,
+                channel: String::new(),
+                buffer: Vec::new(),
+            }
+        });
+
+        // If there is already a fragment, check to see if it is a part of this
+        // message. If not, clear it out.
+        if fragment.sequence_number != sequence_number || fragment.buffer.len() != payload_size {
+            debug!("Dropping fragmented message. Missing {} parts.", fragment.parts_remaining);
+            fragment.parts_remaining = n_fragments;
+            fragment.sequence_number = sequence_number;
+            fragment.channel.clear();
+            fragment.buffer.resize(payload_size, 0);
+        }
+
+        // Place this fragment in the buffer.
+        let message = if fragment_number == 0 {
+            let channel_name_end = match datagram.iter().position(|&b| b == 0) {
+                Some(p) => p,
+                None => {
+                    debug!("Unable to parse channel name in datagram. Dropping.");
+                    return false;
+                }
+            };
+
+            let name_slice = &datagram[FRAG_HEADER_SIZE..channel_name_end - 1];
+            match str::from_utf8(name_slice) {
+                Ok(s) => {
+                    if fragment.channel.is_empty() {
+                        fragment.channel.push_str(s);
+                    }
+
+                    &datagram[channel_name_end + 1..]
+                },
+                Err(_) => {
+                    debug!("Invalid UTF-8 in channel name. Dropping.");
+                    return false;
+                }
+            }
+        } else {
+            &datagram[FRAG_HEADER_SIZE..]
+        };
+
+        fragment.parts_remaining -= 1;
+        &fragment.buffer[fragment_offset..fragment_offset + message.len()].copy_from_slice(message);
+
+        // If we aren't waiting on any more parts, forward the message.
+        if fragment.parts_remaining == 0 {
+            Backend::forward_message(&mut self.subscriptions, &fragment.channel, &fragment.buffer)
+        } else { false }
     }
 
     /// Sends the message to the callbacks.
-    fn forward_message(&mut self, channel: &str, message: &[u8]) -> bool {
+    ///
+    /// The function has this form to fight the borrow checker.
+    fn forward_message(subscriptions: &mut Vec<SubscribeMsg>, channel: &str, message: &[u8]) -> bool {
         // FIXME:
         // Dealing with unsubscriptions this way means that resources aren't
         // released until the first message received on the unsubscribed
         // channel.
         let mut forwarded = false;
-        self.subscriptions.retain(|&(ref re, ref f)| {
+        subscriptions.retain(|&(ref re, ref f)| {
             if re.is_match(channel) {
                 trace!("Channel \"{}\" matched subscription \"{}\"", channel, re);
                 match (*f)(message) {
@@ -526,4 +606,19 @@ impl Backend {
             }
         }
     }
+}
+
+/// A partially complete message.
+struct FragmentBuffer {
+    /// The number of fragments still necessary for this message.
+    parts_remaining: u16,
+
+    /// The sequence number of this message.
+    sequence_number: u32,
+
+    /// The channel this message is to be published on.
+    channel: String,
+
+    /// The received parts of the message.
+    buffer: Vec<u8>,
 }

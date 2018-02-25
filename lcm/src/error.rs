@@ -66,6 +66,10 @@ pub enum PublishError {
     /// The message was too large to be sent.
     #[fail(display = "Message too large to send.")]
     MessageTooLarge,
+
+    /// The channel name was too long.
+    #[fail(display = "Channel name too long.")]
+    ChannelNameTooLong,
 }
 
 impl From<EncodeError> for PublishError {
