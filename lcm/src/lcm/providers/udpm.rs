@@ -5,7 +5,7 @@ use std::time::Duration;
 use std::sync::mpsc;
 use std::net::{SocketAddr, Ipv4Addr, UdpSocket};
 use regex::Regex;
-use byteorder::{NetworkEndian, WriteBytesExt};
+use byteorder::{ByteOrder, NetworkEndian, WriteBytesExt};
 
 use Message;
 use lcm::Subscription;
@@ -419,7 +419,7 @@ impl Backend {
             // If the message used the whole buffer then there is a good chance
             // that some bytes were discarded. We should warn the user.
             if count == buf.len() {
-                warn!("Read buffer fully utilized. Bytes may have been dropped.");
+                debug!("Read buffer fully utilized. Bytes may have been dropped.");
             }
 
             // Make sure the subscription list is fully up-to-date
@@ -437,13 +437,76 @@ impl Backend {
     }
 
     /// Process the given datagram.
-    fn process_datagram(&self, datagram: &[u8], sender: SocketAddr) -> bool {
-        // TODO:
-        // If the datagram is a fragment, add that to the fragment map. If the
-        // fragments now make a complete message, proceed with that. Otherwise,
-        // go down the list of subscriptions, check the regex against the
-        // channel, and see if anyone reports that they succeeded.
+    fn process_datagram(&mut self, datagram: &[u8], sender: SocketAddr) -> bool {
+        match NetworkEndian::read_u32(&datagram[0..4]) {
+            SHORT_HEADER_MAGIC => self.process_short_datagram(datagram),
+            LONG_HEADER_MAGIC => self.process_frag_datagram(datagram, sender),
+            _ => {
+                debug!("Invalid magic in datagram. Dropping.");
+                false
+            },
+        }
+    }
+
+    /// Retrieve the message from a short datagram
+    fn process_short_datagram(&mut self, datagram: &[u8]) -> bool {
+        use std::str;
+
+        trace!("Incoming short datagram");
+
+        // Find the channel name. Anything after that is the message.
+        let (channel, message) = {
+            let channel_name_end = match datagram.iter().position(|&b| b == 0) {
+                Some(p) => p,
+                None => {
+                    debug!("Unable to parse channel name in datagram. Dropping.");
+                    return false;
+                },
+            };
+
+            let name_slice = &datagram[SMALL_HEADER_SIZE..channel_name_end - 1];
+            match str::from_utf8(name_slice) {
+                Ok(s) => (s, &datagram[channel_name_end + 1..]),
+                Err(_) => {
+                    debug!("Invalid UTF-8 in channel name. Dropping.");
+                    return false;
+                }
+            }
+        };
+
+        self.forward_message(channel, message)
+    }
+
+    /// Retrieve the message portion from a fragment datagram.
+    fn process_frag_datagram(&mut self, datagram: &[u8], sender: SocketAddr) -> bool {
         unimplemented!();
+    }
+
+    /// Sends the message to the callbacks.
+    fn forward_message(&mut self, channel: &str, message: &[u8]) -> bool {
+        // FIXME:
+        // Dealing with unsubscriptions this way means that resources aren't
+        // released until the first message received on the unsubscribed
+        // channel.
+        let mut forwarded = false;
+        self.subscriptions.retain(|&(ref re, ref f)| {
+            if re.is_match(channel) {
+                trace!("Channel \"{}\" matched subscription \"{}\"", channel, re);
+                match (*f)(message) {
+                    Err(DecodeError::MessageChannelClosed) => false,
+                    Err(e) => {
+                        warn!("Error decoding message: {}", e);
+                        true
+                    },
+                    Ok(_) => {
+                        forwarded = true;
+                        true
+                    }
+                }
+            } else { true }
+        });
+
+        forwarded
     }
 
     /// Checks to see if there are new pending subscriptions.
