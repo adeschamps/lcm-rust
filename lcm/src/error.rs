@@ -1,5 +1,10 @@
 use std::{io, string};
+use std::sync::mpsc;
 use regex;
+
+// TODO:
+// The errors need significant work. I just sort of added errors as I needed
+// them without any real thought or design.
 
 /// An error indicating that there was a failure to start the `Provider`.
 #[derive(Debug, Fail)]
@@ -43,6 +48,38 @@ impl From<regex::Error> for SubscribeError {
     }
 }
 
+/// An error during publishing.
+#[derive(Debug, Fail)]
+pub enum PublishError {
+    /// An error happened while trying to encode the message.
+    #[fail(display = "Error encoding message.")]
+    MessageEncoding(#[cause] EncodeError),
+
+    /// An IO issue with the provider.
+    #[fail(display = "Error with the provider.")]
+    ProviderIssue(#[cause] io::Error),
+
+    /// The full message was not sent.
+    #[fail(display = "Unable to send the full message.")]
+    MessageNotSent,
+
+    /// The message was too large to be sent.
+    #[fail(display = "Message too large to send.")]
+    MessageTooLarge,
+}
+
+impl From<EncodeError> for PublishError {
+    fn from(err: EncodeError) -> Self {
+        PublishError::MessageEncoding(err)
+    }
+}
+
+impl From<io::Error> for PublishError {
+    fn from(io_err: io::Error) -> Self {
+        PublishError::ProviderIssue(io_err)
+    }
+}
+
 /// Indicates that an error occured while trying to handle messages.
 #[derive(Debug, Fail)]
 pub enum HandleError {
@@ -56,6 +93,12 @@ pub enum HandleError {
     /// The provider is no longer active.
     #[fail(display = "The provider is no longer active.")]
     MissingProvider,
+}
+
+impl From<mpsc::RecvError> for HandleError {
+    fn from(recv_error: mpsc::RecvError) -> Self {
+        HandleError::MissingProvider
+    }
 }
 
 /// An error that happens while trying to encode a message.

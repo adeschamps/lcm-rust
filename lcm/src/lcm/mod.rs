@@ -103,19 +103,19 @@ impl<'a> Lcm<'a> {
     }
 
     /// Publishes a message on the specified channel.
-    pub fn publish<M>(&mut self, channel: &str, message: &M)
+    pub fn publish<M>(&mut self, channel: &str, message: &M) -> Result<(), PublishError>
         where M: Message
     {
         provider!(self.publish(channel, message))
     }
 
     /// Waits for and dispatches messages.
-    pub fn handle(&mut self) {
+    pub fn handle(&mut self) -> Result<(), HandleError> {
         provider!(self.handle())
     }
 
     /// Waits for and dispatches messages, with a timeout.
-    pub fn handle_timeout(&mut self, timeout: Duration) {
+    pub fn handle_timeout(&mut self, timeout: Duration) -> Result<(), HandleError> {
         provider!(self.handle_timeout(timeout))
     }
 }
@@ -123,7 +123,7 @@ impl<'a> Lcm<'a> {
 /// A subscription to an LCM topic.
 ///
 /// Used to unsubscribe from a channel.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Subscription(u32);
 
 /// The backing providers for the `Lcm` type.
