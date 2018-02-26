@@ -4,6 +4,7 @@ use std::time::Duration;
 use regex::Regex;
 
 mod providers;
+#[cfg(feature = "udpm")]
 use self::providers::udpm::UdpmProvider;
 
 use Message;
@@ -14,6 +15,7 @@ macro_rules! provider
 {
     ($self:ident.$func:ident($($args:expr),*)) => {
         match $self.provider {
+            #[cfg(feature = "udpm")]
             Provider::Udpm(ref mut p) => p.$func($($args),*),
 
             #[cfg(feature = "file")]
@@ -68,6 +70,7 @@ impl<'a> Lcm<'a> {
         let (provider_name, network, options) = parse_lcm_url(lcm_url)?;
 
         let provider = match provider_name {
+            #[cfg(feature = "udpm")]
             "udpm" => Provider::Udpm(UdpmProvider::new(network, options)?),
 
             #[cfg(feature = "file")]
@@ -133,6 +136,7 @@ pub struct Subscription(u32);
 /// The backing providers for the `Lcm` type.
 pub enum Provider<'a> {
     /// The UDP Multicast provider.
+    #[cfg(feature = "udpm")]
     Udpm(UdpmProvider<'a>),
 
     /// The log file provider.
