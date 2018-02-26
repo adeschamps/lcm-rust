@@ -1,4 +1,5 @@
 use std::env;
+use std::io::{Write, Read};
 use std::collections::HashMap;
 use std::time::Duration;
 use regex::Regex;
@@ -6,7 +7,7 @@ use regex::Regex;
 mod providers;
 use self::providers::udpm::UdpmProvider;
 
-use Message;
+use {Marshall, Message};
 use error::*;
 
 /// Convenience macro for dispatching functions among providers.
@@ -82,7 +83,7 @@ impl<'a> Lcm<'a> {
         })
     }
 
-    /// Subscribes a callback to a particular topic.
+    /// Subscribes a callback to a particular channel.
     ///
     /// The input is interpreted as a regular expression. Unlike the C
     /// implementation of LCM, the expression is *not* implicitly surrounded
@@ -97,6 +98,17 @@ impl<'a> Lcm<'a> {
         provider!(self.subscribe(re, buffer_size, callback))
     }
 
+    /// Subscribes a raw callback to a particular channel.
+    ///
+    /// The normal `Lcm::subscribe` function should be preferred over this one.
+    pub fn subscribe_raw<F>(&mut self, channel: &str, buffer_size: usize, mut callback: F) -> Result<Subscription, SubscribeError>
+        where F: FnMut(u64, &[u8]) + 'a
+    {
+        self.subscribe(channel, buffer_size, move |m: RawBytes| {
+            callback(m.hash, &m.bytes);
+        })
+    }
+
     /// Unsubscribes a message handler.
     pub fn unsubscribe(&mut self, subscription: Subscription) {
         provider!(self.unsubscribe(subscription))
@@ -107,6 +119,24 @@ impl<'a> Lcm<'a> {
         where M: Message
     {
         provider!(self.publish(channel, message))
+    }
+
+    /// Publishes a raw message on the specified channel.
+    ///
+    /// The normal `Lcm::publish` function should be preferred over this one.
+    pub fn publish_raw<M>(&mut self, channel: &str, message: &M) -> Result<(), PublishError>
+        where M: Message
+    {
+        // TODO:
+        // This is a fairly inefficient implementation. At some point, it
+        // should be replaced with something better.
+        let hash = M::HASH;
+
+        let mut bytes = Vec::with_capacity(message.size());
+        message.encode(&mut bytes)?;
+
+        let raw_bytes = RawBytes { hash, bytes };
+        self.publish(channel, &raw_bytes)
     }
 
     /// Waits for and dispatches messages.
@@ -127,13 +157,50 @@ impl<'a> Lcm<'a> {
 pub struct Subscription(u32);
 
 /// The backing providers for the `Lcm` type.
-pub enum Provider<'a> {
+enum Provider<'a> {
     /// The UDP Multicast provider.
     Udpm(UdpmProvider<'a>),
 
     /// The log file provider.
     #[cfg(feature = "file")]
     File(FileProvider<'a>),
+}
+
+/// A type used to allow users to subscribe to raw bytes.
+struct RawBytes {
+    hash: u64,
+    bytes: Vec<u8>,
+}
+impl Marshall for RawBytes {
+    fn encode(&self, _: &mut Write) -> Result<(), EncodeError> {
+        unimplemented!();
+    }
+
+    fn decode(_: &mut Read) -> Result<Self, DecodeError> {
+        unimplemented!();
+    }
+
+    fn size(&self) -> usize {
+        unimplemented!();
+    }
+}
+impl Message for RawBytes {
+    const HASH: u64 = 0;
+
+    fn encode_with_hash(&self) -> Result<Vec<u8>, EncodeError> {
+        let mut buffer = Vec::with_capacity(Self::HASH.size() + self.bytes.len());
+        Self::HASH.encode(&mut buffer)?;
+        buffer.extend_from_slice(&self.bytes);
+        Ok(buffer)
+    }
+
+    fn decode_with_hash(mut buffer: &mut Read) -> Result<Self, DecodeError> {
+        let hash: u64 = Marshall::decode(&mut buffer)?;
+        let mut bytes = Vec::new();
+        buffer.read_to_end(&mut bytes)?;
+
+        Ok(RawBytes { hash, bytes })
+    }
 }
 
 /// Parses the string into its LCM URL components.
