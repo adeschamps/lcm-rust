@@ -53,8 +53,11 @@ impl Field {
                         let size_name = syn::Ident::from(s as &str);
                         quote! {
                             if self.#size_name as usize != item.len() {
-                                return Err(::std::io::Error::new(::std::io::ErrorKind::Other,
-                                           "Size is larger than vector"));
+                                return Err(::lcm::error::EncodeError::SizeMismatch {
+                                    size_var: stringify!(#size_name).into(),
+                                    expected: self.#size_name as i64,
+                                    found: item.len()
+                                });
                             }
                             for item in item.iter() { #tokens }
                         }
@@ -94,7 +97,7 @@ impl Field {
                         let dim_name = syn::Ident::from(s as &str);
                         need_q_mark = true;
                         quote! {
-                            (0..#dim_name).map(|_| #tokens).collect::<Result<_, ::std::io::Error>>()
+                            (0..#dim_name).map(|_| #tokens).collect::<Result<_, ::lcm::error::DecodeError>>()
                         }
                     }
                 };

@@ -1,7 +1,12 @@
 [package]
 name = "lcm"
 version = "0.1.0"
-authors = ["Anthony Deschamps <anthony.j.deschamps@gmail.com>"]
+authors = ["Anthony Deschamps <anthony.j.deschamps@gmail.com>", "Nate Kent <nate@nkent.net>"]
 
 [dependencies]
+net2 = "0.2"
+log = "0.4"
 byteorder = "1.2.1"
+failure = "0.1"
+regex = "0.2"
+lcm-derive = { path = "../lcm-derive" }
