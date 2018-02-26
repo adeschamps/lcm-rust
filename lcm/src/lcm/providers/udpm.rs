@@ -181,6 +181,11 @@ impl<'a> UdpmProvider<'a> {
     pub fn unsubscribe(&mut self, subscription: Subscription) {
         self.subscriptions
             .retain(|&(ref sub, _)| *sub != subscription);
+
+        // Explicitly drop the subscription, since it is no longer
+        // valid.  Without this, clippy suggests passing the
+        // subscription by reference, which does not capture the
+        // semantics of what this function does.
         drop(subscription);
     }
 
