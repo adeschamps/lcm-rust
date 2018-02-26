@@ -76,18 +76,20 @@ impl<'a> CodeGenerator<'a> {
     }
 
     fn generate_struct(&mut self, s: &ast::Struct) {
+        let struct_name = make_struct_name(&s.name);
+
         if let Some(ref comment) = s.comment {
             self.generate_comment(comment);
         }
         self.push_line("#[derive(Debug, Message)]");
-        self.push_line(&format!("pub struct {} {{", s.name));
+        self.push_line(&format!("pub struct {} {{", struct_name));
         for field in &s.fields {
             self.indent().generate_field(field);
         }
         self.push_line("}");
 
         if !s.constants.is_empty() {
-            self.push_line(&format!("impl {} {{", s.name));
+            self.push_line(&format!("impl {} {{", struct_name));
             for constant in &s.constants {
                 self.indent().generate_constant(constant);
             }
@@ -105,7 +107,7 @@ impl<'a> CodeGenerator<'a> {
                 .iter()
                 .filter_map(|mult| match *mult {
                     ast::Multiplicity::Constant(_) => None,
-                    ast::Multiplicity::Variable(ref len) => Some(format!("length = \"{}\"", len))
+                    ast::Multiplicity::Variable(ref len) => Some(format!("length = \"{}\"", len)),
                 })
                 .join(", ");
             self.push_line(&format!("#[lcm({})]", lengths));
@@ -150,6 +152,21 @@ impl<'a> CodeGenerator<'a> {
     }
 }
 
+/// Convert a struct name to Rust naming conventions.
+///
+/// This converts to CamelCase, and also removes the trailing "_t"
+/// that is common in C and LCM type names.
+fn make_struct_name(original: &str) -> String {
+    use heck::CamelCase;
+
+    let original = if original.ends_with("_t") {
+        &original[0..original.len() - 2]
+    } else {
+        original
+    };
+    original.to_camel_case()
+}
+
 impl Display for ast::Type {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match *self {
@@ -166,7 +183,7 @@ impl Display for ast::Type {
                 for ns in namespaces {
                     write!(f, "{}::", ns.0)?;
                 }
-                write!(f, "{}", struct_name)
+                write!(f, "{}", make_struct_name(struct_name))
             }
         }
     }

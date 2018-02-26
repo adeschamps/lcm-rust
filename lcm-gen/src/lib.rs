@@ -1,5 +1,6 @@
 #[macro_use]
 extern crate failure;
+extern crate heck;
 extern crate itertools;
 extern crate pest;
 #[macro_use]
