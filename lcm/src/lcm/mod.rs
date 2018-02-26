@@ -124,18 +124,12 @@ impl<'a> Lcm<'a> {
     /// Publishes a raw message on the specified channel.
     ///
     /// The normal `Lcm::publish` function should be preferred over this one.
-    pub fn publish_raw<M>(&mut self, channel: &str, message: &M) -> Result<(), PublishError>
-        where M: Message
+    pub fn publish_raw<M>(&mut self, channel: &str, hash: u64, buffer: &[u8]) -> Result<(), PublishError>
     {
         // TODO:
         // This is a fairly inefficient implementation. At some point, it
         // should be replaced with something better.
-        let hash = M::HASH;
-
-        let mut bytes = Vec::with_capacity(message.size());
-        message.encode(&mut bytes)?;
-
-        let raw_bytes = RawBytes { hash, bytes };
+        let raw_bytes = RawBytes { hash, bytes: buffer.to_owned() };
         self.publish(channel, &raw_bytes)
     }
 
