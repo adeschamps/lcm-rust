@@ -54,11 +54,11 @@ check_generated!(
     camera_image_t,
     r#"pub mod mycorp {
     #[derive(Debug, Message)]
-    pub struct camera_image_t {
+    pub struct CameraImage {
         pub utime: i64,
         pub camera_name: String,
-        pub jpeg_image: jpeg::image_t,
-        pub pose: mit::pose_t,
+        pub jpeg_image: jpeg::Image,
+        pub pose: mit::Pose,
     }
 }
 "#
@@ -69,7 +69,7 @@ check_generated!(
     r##"#[doc = r#" This is a comment
  that spans multiple lines"#]
 #[derive(Debug, Message)]
-pub struct my_struct_t {
+pub struct MyStruct {
     #[doc = r#" Horizontal position in meters."#]
     pub x: i32,
     #[doc = r#" Vertical position in meters."#]
@@ -99,9 +99,9 @@ pub struct C {
 check_generated!(
     my_constants_t,
     r##"#[derive(Debug, Message)]
-pub struct my_constants_t {
+pub struct MyConstants {
 }
-impl my_constants_t {
+impl MyConstants {
     pub const YELLOW: i32 = 1;
     pub const GOLDENROD: i32 = 2;
     pub const CANARY: i32 = 3;
@@ -113,7 +113,7 @@ impl my_constants_t {
 check_generated!(
     point2d_list_t,
     r#"#[derive(Debug, Message)]
-pub struct point2d_list_t {
+pub struct Point2dList {
     pub npoints: i32,
     #[lcm(length = "npoints")]
     pub points: Vec<[f64; 2]>,
@@ -124,7 +124,7 @@ pub struct point2d_list_t {
 check_generated!(
     temperature_t,
     r##"#[derive(Debug, Message)]
-pub struct temperature_t {
+pub struct Temperature {
     pub utime: i64,
     #[doc = r#" Temperature in degrees Celsius. A "float" would probably
      * be good enough, unless we're measuring temperatures during
@@ -144,7 +144,7 @@ pub struct temperature_t {
 check_generated!(
     member_group,
     r##"#[derive(Debug, Message)]
-pub struct member_group {
+pub struct MemberGroup {
     #[doc = r#" A vector."#]
     pub x: f64,
     #[doc = r#" A vector."#]
