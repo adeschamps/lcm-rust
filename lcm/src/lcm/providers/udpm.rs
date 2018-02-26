@@ -19,9 +19,9 @@ type SubscribeMsg = (
 );
 
 /// LCM's magic number for short messages.
-const SHORT_HEADER_MAGIC: u32 = 0x4c433032;
+const SHORT_HEADER_MAGIC: u32 = 0x4C43_3032;
 /// LCM's magic number for message fragments.
-const LONG_HEADER_MAGIC: u32 = 0x4c433033;
+const LONG_HEADER_MAGIC: u32 = 0x4C43_3033;
 
 /// The maximum size for datagrams.
 ///
@@ -71,7 +71,7 @@ pub struct UdpmProvider<'a> {
 }
 impl<'a> UdpmProvider<'a> {
     /// Creates a new UDPM provider using the given settings.
-    pub fn new(network: &str, options: HashMap<&str, &str>) -> Result<Self, LcmInitError> {
+    pub fn new(network: &str, options: &HashMap<&str, &str>) -> Result<Self, LcmInitError> {
         // Parse the network string into the address and port
         let (addr, port) = UdpmProvider::parse_network_string(network)?;
 
@@ -181,6 +181,7 @@ impl<'a> UdpmProvider<'a> {
     pub fn unsubscribe(&mut self, subscription: Subscription) {
         self.subscriptions
             .retain(|&(ref sub, _)| *sub != subscription);
+        drop(subscription);
     }
 
     /// Publishes a message on the specified channel.
@@ -415,7 +416,7 @@ impl<'a> UdpmProvider<'a> {
             }
             buf.write_u8(0).unwrap();
 
-            buf.write(message).unwrap();
+            buf.write_all(message).unwrap();
 
             payload_end
         };
@@ -473,7 +474,7 @@ impl Backend {
     /// exit if the notification channel closes (which signifies that the
     /// client provider object has been deleted).
     pub fn run(mut self) -> io::Result<()> {
-        let mut buf = [0u8; 65535];
+        let mut buf = [0u8; 0xFFFF];
 
         loop {
             // Wait for an incoming datagram
@@ -626,7 +627,7 @@ impl Backend {
         };
 
         fragment.parts_remaining -= 1;
-        &fragment.buffer[fragment_offset..fragment_offset + message.len()].copy_from_slice(message);
+        fragment.buffer[fragment_offset..fragment_offset + message.len()].copy_from_slice(message);
 
         // If we aren't waiting on any more parts, forward the message.
         if fragment.parts_remaining == 0 {

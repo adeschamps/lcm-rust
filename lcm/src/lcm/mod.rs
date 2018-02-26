@@ -24,9 +24,9 @@ macro_rules! provider
     }
 }
 
-/// Default LCM URL to be used when the "LCM_DEFAULT_URL" environment variable
+/// Default LCM URL to be used when the `LCM_DEFAULT_URL` environment variable
 /// is not available.
-const LCM_DEFAULT_URL: &'static str = "udpm://239.255.76.67:7667?ttl=0";
+const LCM_DEFAULT_URL: &str = "udpm://239.255.76.67:7667?ttl=0";
 
 /// An LCM instance that handles publishing and subscribing as well as encoding
 /// and decoding messages.
@@ -71,10 +71,10 @@ impl<'a> Lcm<'a> {
 
         let provider = match provider_name {
             #[cfg(feature = "udpm")]
-            "udpm" => Provider::Udpm(UdpmProvider::new(network, options)?),
+            "udpm" => Provider::Udpm(UdpmProvider::new(network, &options)?),
 
             #[cfg(feature = "file")]
-            "file" => Provider::File(FileProvider::new(network, options)?),
+            "file" => Provider::File(FileProvider::new(network, &options)?),
 
             _ => return Err(LcmInitError::UnknownProvider(provider_name.into())),
         };

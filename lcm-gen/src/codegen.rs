@@ -154,7 +154,7 @@ impl<'a> CodeGenerator<'a> {
 
 /// Convert a struct name to Rust naming conventions.
 ///
-/// This converts to CamelCase, and also removes the trailing "_t"
+/// This converts to `CamelCase`, and also removes the trailing "_t"
 /// that is common in C and LCM type names.
 fn make_struct_name(original: &str) -> String {
     use heck::CamelCase;
