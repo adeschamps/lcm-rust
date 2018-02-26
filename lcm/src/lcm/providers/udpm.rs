@@ -3,7 +3,7 @@ use std::io::{self, Write};
 use std::collections::HashMap;
 use std::time::Duration;
 use std::sync::mpsc;
-use std::net::{SocketAddr, IpAddr, Ipv4Addr, UdpSocket};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use regex::Regex;
 use byteorder::{ByteOrder, NetworkEndian, WriteBytesExt};
 
@@ -13,7 +13,10 @@ use error::*;
 use utils::spsc;
 
 /// Message used to subscribe to a new channel.
-type SubscribeMsg = (Regex, Box<Fn(&[u8]) -> Result<(), DecodeError> + Send + 'static>);
+type SubscribeMsg = (
+    Regex,
+    Box<Fn(&[u8]) -> Result<(), DecodeError> + Send + 'static>,
+);
 
 /// LCM's magic number for short messages.
 const SHORT_HEADER_MAGIC: u32 = 0x4c433032;
@@ -68,8 +71,7 @@ pub struct UdpmProvider<'a> {
 }
 impl<'a> UdpmProvider<'a> {
     /// Creates a new UDPM provider using the given settings.
-    pub fn new(network: &str, options: HashMap<&str, &str>) -> Result<Self, LcmInitError>
-    {
+    pub fn new(network: &str, options: HashMap<&str, &str>) -> Result<Self, LcmInitError> {
         // Parse the network string into the address and port
         let (addr, port) = UdpmProvider::parse_network_string(network)?;
 
@@ -79,7 +81,10 @@ impl<'a> UdpmProvider<'a> {
             Err(_) => return Err(LcmInitError::InvalidLcmUrl),
         };
 
-        debug!("Starting UDPM provider with multicast (addr = {}, port = {}, ttl = {})", addr, port, ttl);
+        debug!(
+            "Starting UDPM provider with multicast (addr = {}, port = {}, ttl = {})",
+            addr, port, ttl
+        );
         let socket = UdpmProvider::setup_udp_socket(addr, port, ttl)?;
         let (notify_tx, notify_rx) = mpsc::sync_channel(1);
         let (subscribe_tx, subscribe_rx) = mpsc::channel();
@@ -110,9 +115,15 @@ impl<'a> UdpmProvider<'a> {
     /// This involves sending the `channel` and a closure to the currently
     /// running `Backend`. The closure will be used to convert the LCM datagram
     /// into an actual message type which will then be passed to the client.
-    pub fn subscribe<M, F>(&mut self, channel: Regex, buffer_size: usize, mut callback: F) -> Result<Subscription, SubscribeError>
-        where M: Message + Send + 'static,
-              F: FnMut(M) + 'a
+    pub fn subscribe<M, F>(
+        &mut self,
+        channel: Regex,
+        buffer_size: usize,
+        mut callback: F,
+    ) -> Result<Subscription, SubscribeError>
+    where
+        M: Message + Send + 'static,
+        F: FnMut(M) + 'a,
     {
         // Create the channel used to send the message back from the backend
         let (tx, rx) = spsc::channel::<M>(buffer_size);
@@ -141,7 +152,9 @@ impl<'a> UdpmProvider<'a> {
             for _ in 0..rx.capacity() {
                 if let Some(m) = rx.recv() {
                     callback(m);
-                } else { break; }
+                } else {
+                    break;
+                }
             }
         };
 
@@ -151,10 +164,11 @@ impl<'a> UdpmProvider<'a> {
 
         // Send it across the way and then store our callback.
         match self.subscribe_tx.send((channel, Box::new(conversion_func))) {
-            Ok(_)  => {},
+            Ok(_) => {}
             Err(_) => return Err(SubscribeError::MissingProvider),
         }
-        self.subscriptions.push((Subscription(sub_id), Box::new(callback_fn)));
+        self.subscriptions
+            .push((Subscription(sub_id), Box::new(callback_fn)));
 
         Ok(Subscription(sub_id))
     }
@@ -165,7 +179,8 @@ impl<'a> UdpmProvider<'a> {
     /// will determine that the topic has been unsubscribed since the SPSC
     /// channel used to send messages will be closed.
     pub fn unsubscribe(&mut self, subscription: Subscription) {
-        self.subscriptions.retain(|&(ref sub, _)| *sub != subscription);
+        self.subscriptions
+            .retain(|&(ref sub, _)| *sub != subscription);
     }
 
     /// Publishes a message on the specified channel.
@@ -173,7 +188,8 @@ impl<'a> UdpmProvider<'a> {
     /// This message will be sent directly by the `UdpmProvider` without being
     /// sent to the backend.
     pub fn publish<M>(&mut self, channel: &str, message: &M) -> Result<(), PublishError>
-        where M: Message
+    where
+        M: Message,
     {
         let message_buf = message.encode_with_hash()?;
 
@@ -190,8 +206,7 @@ impl<'a> UdpmProvider<'a> {
         if message_buf.len() > available {
             // We need to break this into fragments
             self.send_frag_datagram(channel, &message_buf)?;
-        }
-        else {
+        } else {
             // This message can go out in a single datagram
             self.send_small_datagram(channel, &message_buf)?;
         }
@@ -207,7 +222,9 @@ impl<'a> UdpmProvider<'a> {
     pub fn handle(&mut self) -> Result<(), HandleError> {
         debug!("Waiting on notify channel");
         self.notify_rx.recv()?;
-        self.subscriptions.iter_mut().for_each(|&mut (_, ref mut f)| (*f)());
+        self.subscriptions
+            .iter_mut()
+            .for_each(|&mut (_, ref mut f)| (*f)());
 
         Ok(())
     }
@@ -220,7 +237,9 @@ impl<'a> UdpmProvider<'a> {
         if let Err(mpsc::RecvTimeoutError::Disconnected) = self.notify_rx.recv_timeout(timeout) {
             return Err(HandleError::MissingProvider);
         }
-        self.subscriptions.iter_mut().for_each(|&mut (_, ref mut f)| (*f)());
+        self.subscriptions
+            .iter_mut()
+            .for_each(|&mut (_, ref mut f)| (*f)());
 
         Ok(())
     }
@@ -228,11 +247,11 @@ impl<'a> UdpmProvider<'a> {
     /// Parse the network string into the address and port components.
     fn parse_network_string(network: &str) -> Result<(Ipv4Addr, u16), LcmInitError> {
         // We can't just parse this, since we need to provide default values.
-        let (addr, port)  = match network.find(':') {
+        let (addr, port) = match network.find(':') {
             Some(p) => {
                 let (a, p) = network.split_at(p);
                 (a, &p[1..])
-            },
+            }
             None => (network, ""),
         };
 
@@ -317,7 +336,11 @@ impl<'a> UdpmProvider<'a> {
             return Err(PublishError::MessageTooLarge);
         }
 
-        trace!("Sending {} fragment datagrams on channel \"{}\"", n_fragments, channel);
+        trace!(
+            "Sending {} fragment datagrams on channel \"{}\"",
+            n_fragments,
+            channel
+        );
         let mut remaining_message = message;
         let mut fragment_offset = 0;
         for fragment_number in 0..n_fragments {
@@ -326,10 +349,13 @@ impl<'a> UdpmProvider<'a> {
 
                 // We're writing to a slice, so these can never fail.
                 buf.write_u32::<NetworkEndian>(LONG_HEADER_MAGIC).unwrap();
-                buf.write_u32::<NetworkEndian>(self.sequence_number).unwrap();
-                buf.write_u32::<NetworkEndian>(message.len() as u32).unwrap();
+                buf.write_u32::<NetworkEndian>(self.sequence_number)
+                    .unwrap();
+                buf.write_u32::<NetworkEndian>(message.len() as u32)
+                    .unwrap();
                 buf.write_u32::<NetworkEndian>(fragment_offset).unwrap();
-                buf.write_u32::<NetworkEndian>(fragment_number as u32).unwrap();
+                buf.write_u32::<NetworkEndian>(fragment_number as u32)
+                    .unwrap();
                 buf.write_u32::<NetworkEndian>(n_fragments as u32).unwrap();
 
                 if fragment_number == 0 {
@@ -341,7 +367,11 @@ impl<'a> UdpmProvider<'a> {
                 }
 
                 let amount_written = buf.write(remaining_message).unwrap();
-                let message_end = FRAG_HEADER_SIZE + if fragment_number == 0 { channel.len() + 1 } else { 0 };
+                let message_end = FRAG_HEADER_SIZE + if fragment_number == 0 {
+                    channel.len() + 1
+                } else {
+                    0
+                };
 
                 (message_end + amount_written, amount_written)
             };
@@ -378,7 +408,8 @@ impl<'a> UdpmProvider<'a> {
             // the code for writing to a slice does not have a way to return an
             // `Err`.
             buf.write_u32::<NetworkEndian>(SHORT_HEADER_MAGIC).unwrap();
-            buf.write_u32::<NetworkEndian>(self.sequence_number).unwrap();
+            buf.write_u32::<NetworkEndian>(self.sequence_number)
+                .unwrap();
             for &b in channel.as_bytes() {
                 buf.write_u8(b).unwrap();
             }
@@ -393,7 +424,9 @@ impl<'a> UdpmProvider<'a> {
 
         if sent != datagram_size {
             Err(PublishError::MessageNotSent)
-        } else { Ok(()) }
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -419,9 +452,15 @@ pub struct Backend {
 }
 impl Backend {
     /// Create a `Backend` with the specified channels.
-    pub fn new(socket: UdpSocket, notify_tx: mpsc::SyncSender<()>, subscribe_rx: mpsc::Receiver<SubscribeMsg>) -> Self {
+    pub fn new(
+        socket: UdpSocket,
+        notify_tx: mpsc::SyncSender<()>,
+        subscribe_rx: mpsc::Receiver<SubscribeMsg>,
+    ) -> Self {
         Backend {
-            socket, notify_tx, subscribe_rx,
+            socket,
+            notify_tx,
+            subscribe_rx,
             subscriptions: Vec::new(),
             fragments: HashMap::new(),
         }
@@ -476,7 +515,7 @@ impl Backend {
             _ => {
                 debug!("Invalid magic in datagram. Dropping.");
                 false
-            },
+            }
         }
     }
 
@@ -488,12 +527,16 @@ impl Backend {
 
         // Find the channel name. Anything after that is the message.
         let (channel, message) = {
-            let channel_name_end = match datagram.iter().skip(SMALL_HEADER_SIZE).position(|&b| b == 0) {
+            let channel_name_end = match datagram
+                .iter()
+                .skip(SMALL_HEADER_SIZE)
+                .position(|&b| b == 0)
+            {
                 Some(p) => p + SMALL_HEADER_SIZE,
                 None => {
                     debug!("Unable to parse channel name in datagram. Dropping.");
                     return false;
-                },
+                }
             };
 
             let name_slice = &datagram[SMALL_HEADER_SIZE..channel_name_end];
@@ -525,21 +568,28 @@ impl Backend {
             debug!("Huge datagram. Dropping");
         }
 
-        trace!("Received fragment number {} out of {}.", fragment_number, n_fragments);
+        trace!(
+            "Received fragment number {} out of {}.",
+            fragment_number,
+            n_fragments
+        );
 
-        let fragment = self.fragments.entry(sender).or_insert_with(|| {
-            FragmentBuffer {
+        let fragment = self.fragments
+            .entry(sender)
+            .or_insert_with(|| FragmentBuffer {
                 parts_remaining: 0,
                 sequence_number: 0,
                 channel: String::new(),
                 buffer: Vec::new(),
-            }
-        });
+            });
 
         // If there is already a fragment, check to see if it is a part of this
         // message. If not, clear it out.
         if fragment.sequence_number != sequence_number || fragment.buffer.len() != payload_size {
-            debug!("Dropping fragmented message. Missing {} parts.", fragment.parts_remaining);
+            debug!(
+                "Dropping fragmented message. Missing {} parts.",
+                fragment.parts_remaining
+            );
             fragment.parts_remaining = n_fragments;
             fragment.sequence_number = sequence_number;
             fragment.channel.clear();
@@ -548,13 +598,14 @@ impl Backend {
 
         // Place this fragment in the buffer.
         let message = if fragment_number == 0 {
-            let channel_name_end = match datagram.iter().skip(FRAG_HEADER_SIZE).position(|&b| b == 0) {
-                Some(p) => p + FRAG_HEADER_SIZE,
-                None => {
-                    debug!("Unable to parse channel name in datagram. Dropping.");
-                    return false;
-                }
-            };
+            let channel_name_end =
+                match datagram.iter().skip(FRAG_HEADER_SIZE).position(|&b| b == 0) {
+                    Some(p) => p + FRAG_HEADER_SIZE,
+                    None => {
+                        debug!("Unable to parse channel name in datagram. Dropping.");
+                        return false;
+                    }
+                };
 
             let name_slice = &datagram[FRAG_HEADER_SIZE..channel_name_end];
             match str::from_utf8(name_slice) {
@@ -564,7 +615,7 @@ impl Backend {
                     }
 
                     &datagram[channel_name_end + 1..]
-                },
+                }
                 Err(_) => {
                     debug!("Invalid UTF-8 in channel name. Dropping.");
                     return false;
@@ -580,20 +631,30 @@ impl Backend {
         // If we aren't waiting on any more parts, forward the message.
         if fragment.parts_remaining == 0 {
             Backend::forward_message(&mut self.subscriptions, &fragment.channel, &fragment.buffer)
-        } else { false }
+        } else {
+            false
+        }
     }
 
     /// Sends the message to the callbacks.
     ///
     /// The function has this form to fight the borrow checker.
-    fn forward_message(subscriptions: &mut Vec<SubscribeMsg>, channel: &str, message: &[u8]) -> bool {
+    fn forward_message(
+        subscriptions: &mut Vec<SubscribeMsg>,
+        channel: &str,
+        message: &[u8],
+    ) -> bool {
         // FIXME:
         // Dealing with unsubscriptions this way means that resources aren't
         // released until the first message received on the unsubscribed
         // channel.
         let mut forwarded = false;
         subscriptions.retain(|&(ref re, ref f)| {
-            trace!("Checking if channel \"{}\" matches regular expression \"{}\"", channel, re);
+            trace!(
+                "Checking if channel \"{}\" matches regular expression \"{}\"",
+                channel,
+                re
+            );
             if re.is_match(channel) {
                 trace!("Channel \"{}\" matched subscription \"{}\"", channel, re);
                 match (*f)(message) {
@@ -601,13 +662,15 @@ impl Backend {
                     Err(e) => {
                         warn!("Error decoding message: {}", e);
                         true
-                    },
+                    }
                     Ok(_) => {
                         forwarded = true;
                         true
                     }
                 }
-            } else { true }
+            } else {
+                true
+            }
         });
 
         forwarded
@@ -623,7 +686,7 @@ impl Backend {
     /// Returns false if the notification channel has been closed.
     fn notify(&self) -> bool {
         match self.notify_tx.try_send(()) {
-            Ok(_) | Err(mpsc::TrySendError::Full(_)) => { true },
+            Ok(_) | Err(mpsc::TrySendError::Full(_)) => true,
             Err(mpsc::TrySendError::Disconnected(_)) => {
                 debug!("Notification channel disconnected. Killing read thread.");
                 false

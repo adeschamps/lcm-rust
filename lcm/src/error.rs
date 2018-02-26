@@ -110,13 +110,13 @@ impl From<mpsc::RecvError> for HandleError {
 pub enum EncodeError {
     #[fail(display = "The size of array does not match the size specified in {}. Expected {}, found {}.", size_var, expected, found)]
     SizeMismatch {
-        /// The field specifying the size of the array.
+    /// The field specifying the size of the array.
         size_var: String,
 
-        /// The size the array was expected to be.
+    /// The size the array was expected to be.
         expected: i64,
 
-        /// The size the array actually was.
+    /// The size the array actually was.
         found: usize,
     },
 
@@ -138,9 +138,7 @@ impl From<io::Error> for EncodeError {
 pub enum DecodeError {
     /// The size variable for an array had an invalid size.
     #[fail(display = "Invalid array size of {}", size)]
-    InvalidSize {
-        size: i64,
-    },
+    InvalidSize { size: i64 },
 
     /// The expected message hash does not match the found hash.
     #[fail(display = "Invalid hash found. Expected 0x{:X}, found 0x{:X}.", expected, found)]
@@ -153,7 +151,8 @@ pub enum DecodeError {
     },
 
     /// A boolean value was not encoded as either `0` or `1`.
-    #[fail(display = "Value of {} is invalid for Booleans. Booleans should be encoded as 0 or 1.", val)]
+    #[fail(display = "Value of {} is invalid for Booleans. Booleans should be encoded as 0 or 1.",
+           val)]
     InvalidBoolean {
         /// The found value.
         val: i8,
@@ -181,7 +180,7 @@ pub enum DecodeError {
     WriteErr {
         #[cause]
         io_error: io::Error,
-    }
+    },
 }
 impl DecodeError {
     /// Create a new `InvalidSize`.

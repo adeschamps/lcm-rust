@@ -26,7 +26,6 @@ macro_rules! provider
 /// is not available.
 const LCM_DEFAULT_URL: &'static str = "udpm://239.255.76.67:7667?ttl=0";
 
-
 /// An LCM instance that handles publishing and subscribing as well as encoding
 /// and decoding messages.
 pub struct Lcm<'a> {
@@ -48,11 +47,11 @@ impl<'a> Lcm<'a> {
             Ok(ref s) if s.is_empty() => {
                 debug!("LCM_DEFAULT_URL available but empty. Using default settings.");
                 LCM_DEFAULT_URL
-            },
+            }
             Ok(ref s) => {
                 debug!("LCM_DEFAULT_URL=\"{}\"", s);
                 s
-            },
+            }
             Err(_) => {
                 debug!("LCM_DEFAULT_URL not present or unavailable. Using default settings.");
                 LCM_DEFAULT_URL
@@ -77,9 +76,7 @@ impl<'a> Lcm<'a> {
             _ => return Err(LcmInitError::UnknownProvider(provider_name.into())),
         };
 
-        Ok(Lcm {
-            provider
-        })
+        Ok(Lcm { provider })
     }
 
     /// Subscribes a callback to a particular topic.
@@ -87,9 +84,15 @@ impl<'a> Lcm<'a> {
     /// The input is interpreted as a regular expression. Unlike the C
     /// implementation of LCM, the expression is *not* implicitly surrounded
     /// by '^' and '$'.
-    pub fn subscribe<M, F>(&mut self, channel: &str, buffer_size: usize, callback: F) -> Result<Subscription, SubscribeError>
-        where M: Message + Send + 'static,
-              F: FnMut(M) + 'a
+    pub fn subscribe<M, F>(
+        &mut self,
+        channel: &str,
+        buffer_size: usize,
+        callback: F,
+    ) -> Result<Subscription, SubscribeError>
+    where
+        M: Message + Send + 'static,
+        F: FnMut(M) + 'a,
     {
         let re = Regex::new(channel)?;
 
@@ -104,7 +107,8 @@ impl<'a> Lcm<'a> {
 
     /// Publishes a message on the specified channel.
     pub fn publish<M>(&mut self, channel: &str, message: &M) -> Result<(), PublishError>
-        where M: Message
+    where
+        M: Message,
     {
         provider!(self.publish(channel, message))
     }
@@ -142,25 +146,32 @@ fn parse_lcm_url(lcm_url: &str) -> Result<(&str, &str, HashMap<&str, &str>), Lcm
     let (provider, remaining) = if let Some(p) = lcm_url.find("://") {
         let (p, r) = lcm_url.split_at(p);
         (p, &r[3..])
-    } else { return Err(LcmInitError::InvalidLcmUrl) };
+    } else {
+        return Err(LcmInitError::InvalidLcmUrl);
+    };
 
     // Then split the network string from the options.
     let (network, options) = if let Some(p) = remaining.rfind('?') {
         let (n, o) = remaining.split_at(p);
         (n, &o[1..])
-    } else { (remaining, "") };
+    } else {
+        (remaining, "")
+    };
 
     // Now we convert the options string into a map
     let options = match options {
         "" => HashMap::new(),
-        _ => {
-            options.split('&').map(|s| {
+        _ => options
+            .split('&')
+            .map(|s| {
                 if let Some(p) = s.find('=') {
                     let (a, v) = s.split_at(p);
                     Ok((a, &v[1..]))
-                } else { Err(LcmInitError::InvalidLcmUrl) }
-            }).collect::<Result<_, _>>()?
-        }
+                } else {
+                    Err(LcmInitError::InvalidLcmUrl)
+                }
+            })
+            .collect::<Result<_, _>>()?,
     };
 
     // Then we can return it all
