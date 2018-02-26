@@ -24,6 +24,7 @@ extern crate log;
 extern crate failure;
 extern crate byteorder;
 extern crate regex;
+extern crate net2;
 
 mod utils;
 

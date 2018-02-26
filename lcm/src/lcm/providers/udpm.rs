@@ -3,7 +3,7 @@ use std::io::{self, Write};
 use std::collections::HashMap;
 use std::time::Duration;
 use std::sync::mpsc;
-use std::net::{SocketAddr, Ipv4Addr, UdpSocket};
+use std::net::{SocketAddr, IpAddr, Ipv4Addr, UdpSocket};
 use regex::Regex;
 use byteorder::{ByteOrder, NetworkEndian, WriteBytesExt};
 
@@ -49,6 +49,9 @@ pub struct UdpmProvider<'a> {
     /// The socket used to send datagrams.
     socket: UdpSocket,
 
+    /// The multicast address.
+    addr: SocketAddr,
+
     /// The channel used to notify the `Lcm` object that messages have been
     /// queued.
     notify_rx: mpsc::Receiver<()>,
@@ -92,7 +95,9 @@ impl<'a> UdpmProvider<'a> {
         });
 
         Ok(UdpmProvider {
-            socket, notify_rx,
+            socket,
+            addr: SocketAddr::new(IpAddr::V4(addr), port),
+            notify_rx,
             next_subscription_id: 0,
             subscriptions: Vec::new(),
             subscribe_tx,
@@ -116,7 +121,7 @@ impl<'a> UdpmProvider<'a> {
         // and send it and the function that will pass things on to the callback.
         let conversion_func = move |mut bytes: &[u8]| -> Result<(), DecodeError> {
             // First try to decode the message
-            let message = M::decode(&mut bytes)?;
+            let message = M::decode_with_hash(&mut bytes)?;
 
             // Then double check that the channel isn't closed
             if tx.is_closed() {
@@ -200,6 +205,7 @@ impl<'a> UdpmProvider<'a> {
     /// Blocks on the `notify_rx` channel until a message comes through and
     /// then runs the callback on all available messages.
     pub fn handle(&mut self) -> Result<(), HandleError> {
+        debug!("Waiting on notify channel");
         self.notify_rx.recv()?;
         self.subscriptions.iter_mut().for_each(|&mut (_, ref mut f)| (*f)());
 
@@ -210,6 +216,7 @@ impl<'a> UdpmProvider<'a> {
     ///
     /// Does the same thing as `UdpmProvider::handle` but with a timeout.
     pub fn handle_timeout(&mut self, timeout: Duration) -> Result<(), HandleError> {
+        debug!("Waiting on notify channel");
         if let Err(mpsc::RecvTimeoutError::Disconnected) = self.notify_rx.recv_timeout(timeout) {
             return Err(HandleError::MissingProvider);
         }
@@ -231,15 +238,15 @@ impl<'a> UdpmProvider<'a> {
 
         // Supply the defaults if no value supplied
         let addr = if addr.is_empty() {
+            debug!("No IP address supplied. Using default.");
             "239.255.76.67"
         } else {
-            debug!("No IP address supplied. Using default.");
             addr
         };
         let port = if port.is_empty() {
+            debug!("No port supplied. Using default.");
             "7667"
         } else {
-            debug!("No port supplied. Using default.");
             port
         };
 
@@ -258,24 +265,32 @@ impl<'a> UdpmProvider<'a> {
 
     /// Set up the UDP socket.
     fn setup_udp_socket(addr: Ipv4Addr, port: u16, ttl: u32) -> io::Result<UdpSocket> {
-        use std::net::{SocketAddr, IpAddr};
+        use net2::UdpBuilder;
 
-        debug!("Binding UDP socket");
-        let socket = {
-            let inaddr_any = IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0));
-            UdpSocket::bind(&SocketAddr::new(inaddr_any, port))?
-        };
+        let builder = UdpBuilder::new_v4()?;
 
-        // FIXME:
-        // Rust only supportes SO_REUSEADDR through crates. Come back to this
-        // later, after deciding which crate to use (probably net2 or plain
-        // libc). See lcm_udpm.c:936-956
-        warn!("Skipping SO_REUSEADDR and SO_REUSEPORT");
+        debug!("Setting SO_REUSEADDR");
+        builder.reuse_address(true)?;
+
+        // The UDPM source for the C version of LCM says that the SO_REUSEPORT
+        // only needs to be set on MacOS and FreeBSD.
+        #[cfg(any(target_os = "macos", target_os = "freebsd"))]
+        {
+            use net2::unix::UnixUdpBuilderExt;
+            debug!("Setting SO_REUSEPORT");
+            builder.reuse_port(true)?;
+        }
 
         // FIXME:
         // The C version of LCM increases the receive buffer size on Win32. Do
         // we need to do this and how?
         warn!("Not checking receive buffer size");
+
+        debug!("Binding UDP socket");
+        let socket = {
+            let inaddr_any = IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0));
+            builder.bind(SocketAddr::new(inaddr_any, port))?
+        };
 
         debug!("Joining multicast group");
         socket.join_multicast_v4(&addr, &Ipv4Addr::new(0, 0, 0, 0))?;
@@ -331,7 +346,7 @@ impl<'a> UdpmProvider<'a> {
                 (message_end + amount_written, amount_written)
             };
 
-            let sent = self.socket.send(&buf[0..datagram_size])?;
+            let sent = self.socket.send_to(&buf[0..datagram_size], self.addr)?;
 
             if sent != datagram_size {
                 return Err(PublishError::MessageNotSent);
@@ -374,7 +389,7 @@ impl<'a> UdpmProvider<'a> {
             payload_end
         };
 
-        let sent = self.socket.send(&buf[0..datagram_size])?;
+        let sent = self.socket.send_to(&buf[0..datagram_size], self.addr)?;
 
         if sent != datagram_size {
             Err(PublishError::MessageNotSent)
@@ -423,7 +438,9 @@ impl Backend {
 
         loop {
             // Wait for an incoming datagram
+            trace!("Waiting on socket");
             let (count, from) = self.socket.recv_from(&mut buf)?;
+            trace!("Datagram on socket");
 
             // If the message used the whole buffer then there is a good chance
             // that some bytes were discarded. We should warn the user.
@@ -433,6 +450,12 @@ impl Backend {
 
             // Make sure the subscription list is fully up-to-date
             self.check_for_subscriptions();
+
+            // If it's too short, it absolutely can't be an LCM message.
+            if count < 4 {
+                debug!("Datagram too short to be message. Dropping.");
+                continue;
+            }
 
             // Try to process the message. If at least one of the subscriptions
             // accepts the message, notify the `Lcm` object. If the notify
@@ -465,15 +488,15 @@ impl Backend {
 
         // Find the channel name. Anything after that is the message.
         let (channel, message) = {
-            let channel_name_end = match datagram.iter().position(|&b| b == 0) {
-                Some(p) => p,
+            let channel_name_end = match datagram.iter().skip(SMALL_HEADER_SIZE).position(|&b| b == 0) {
+                Some(p) => p + SMALL_HEADER_SIZE,
                 None => {
                     debug!("Unable to parse channel name in datagram. Dropping.");
                     return false;
                 },
             };
 
-            let name_slice = &datagram[SMALL_HEADER_SIZE..channel_name_end - 1];
+            let name_slice = &datagram[SMALL_HEADER_SIZE..channel_name_end];
             match str::from_utf8(name_slice) {
                 Ok(s) => (s, &datagram[channel_name_end + 1..]),
                 Err(_) => {
@@ -525,15 +548,15 @@ impl Backend {
 
         // Place this fragment in the buffer.
         let message = if fragment_number == 0 {
-            let channel_name_end = match datagram.iter().position(|&b| b == 0) {
-                Some(p) => p,
+            let channel_name_end = match datagram.iter().skip(FRAG_HEADER_SIZE).position(|&b| b == 0) {
+                Some(p) => p + FRAG_HEADER_SIZE,
                 None => {
                     debug!("Unable to parse channel name in datagram. Dropping.");
                     return false;
                 }
             };
 
-            let name_slice = &datagram[FRAG_HEADER_SIZE..channel_name_end - 1];
+            let name_slice = &datagram[FRAG_HEADER_SIZE..channel_name_end];
             match str::from_utf8(name_slice) {
                 Ok(s) => {
                     if fragment.channel.is_empty() {
@@ -570,6 +593,7 @@ impl Backend {
         // channel.
         let mut forwarded = false;
         subscriptions.retain(|&(ref re, ref f)| {
+            trace!("Checking if channel \"{}\" matches regular expression \"{}\"", channel, re);
             if re.is_match(channel) {
                 trace!("Channel \"{}\" matched subscription \"{}\"", channel, re);
                 match (*f)(message) {
