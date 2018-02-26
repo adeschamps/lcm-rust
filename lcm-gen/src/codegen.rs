@@ -105,7 +105,7 @@ impl<'a> CodeGenerator<'a> {
                 .iter()
                 .filter_map(|mult| match *mult {
                     ast::Multiplicity::Constant(_) => None,
-                    ast::Multiplicity::Variable(ref len) => Some(format!("length = \"{}\"", len))
+                    ast::Multiplicity::Variable(ref len) => Some(format!("length = \"{}\"", len)),
                 })
                 .join(", ");
             self.push_line(&format!("#[lcm({})]", lengths));

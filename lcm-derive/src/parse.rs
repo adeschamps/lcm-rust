@@ -97,7 +97,9 @@ impl Field {
                         let dim_name = syn::Ident::from(s as &str);
                         need_q_mark = true;
                         quote! {
-                            (0..#dim_name).map(|_| #tokens).collect::<Result<_, ::lcm::error::DecodeError>>()
+                            (0..#dim_name)
+                                .map(|_| #tokens)
+                                .collect::<Result<_, ::lcm::error::DecodeError>>()
                         }
                     }
                 };
