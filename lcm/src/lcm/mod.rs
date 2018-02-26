@@ -188,8 +188,8 @@ impl Message for RawBytes {
     const HASH: u64 = 0;
 
     fn encode_with_hash(&self) -> Result<Vec<u8>, EncodeError> {
-        let mut buffer = Vec::with_capacity(Self::HASH.size() + self.bytes.len());
-        Self::HASH.encode(&mut buffer)?;
+        let mut buffer = Vec::with_capacity(self.hash.size() + self.bytes.len());
+        self.hash.encode(&mut buffer)?;
         buffer.extend_from_slice(&self.bytes);
         Ok(buffer)
     }
