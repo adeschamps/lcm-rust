@@ -28,7 +28,7 @@ fn simple_struct() {
 
     let generated = codegen::generate(&module);
 
-    let expected = r#"#[derive(Debug, Message)]
+    let expected = r#"#[derive(Clone, Debug, Message)]
 pub struct MyType {
     pub field: f64,
 }
@@ -53,7 +53,7 @@ macro_rules! check_generated {
 check_generated!(
     camera_image_t,
     r#"pub mod mycorp {
-    #[derive(Debug, Message)]
+    #[derive(Clone, Debug, Message)]
     pub struct CameraImage {
         pub utime: i64,
         pub camera_name: String,
@@ -68,7 +68,7 @@ check_generated!(
     comments_t,
     r##"#[doc = r#" This is a comment
  that spans multiple lines"#]
-#[derive(Debug, Message)]
+#[derive(Clone, Debug, Message)]
 pub struct MyStruct {
     #[doc = r#" Horizontal position in meters."#]
     pub x: i32,
@@ -80,16 +80,16 @@ pub struct MyStruct {
 
 check_generated!(
     multiple_structs,
-    r#"#[derive(Debug, Message)]
+    r#"#[derive(Clone, Debug, Message)]
 pub struct A {
     pub b: B,
     pub c: C,
 }
-#[derive(Debug, Message)]
+#[derive(Clone, Debug, Message)]
 pub struct B {
     pub a: A,
 }
-#[derive(Debug, Message)]
+#[derive(Clone, Debug, Message)]
 pub struct C {
     pub b: B,
 }
@@ -98,7 +98,7 @@ pub struct C {
 
 check_generated!(
     my_constants_t,
-    r##"#[derive(Debug, Message)]
+    r##"#[derive(Clone, Debug, Message)]
 pub struct MyConstants {
 }
 impl MyConstants {
@@ -112,7 +112,7 @@ impl MyConstants {
 
 check_generated!(
     point2d_list_t,
-    r#"#[derive(Debug, Message)]
+    r#"#[derive(Clone, Debug, Message)]
 pub struct Point2dList {
     pub npoints: i32,
     #[lcm(length = "npoints")]
@@ -123,7 +123,7 @@ pub struct Point2dList {
 
 check_generated!(
     temperature_t,
-    r##"#[derive(Debug, Message)]
+    r##"#[derive(Clone, Debug, Message)]
 pub struct Temperature {
     pub utime: i64,
     #[doc = r#" Temperature in degrees Celsius. A "float" would probably
@@ -143,7 +143,7 @@ pub struct Temperature {
 /// ```
 check_generated!(
     member_group,
-    r##"#[derive(Debug, Message)]
+    r##"#[derive(Clone, Debug, Message)]
 pub struct MemberGroup {
     #[doc = r#" A vector."#]
     pub x: f64,

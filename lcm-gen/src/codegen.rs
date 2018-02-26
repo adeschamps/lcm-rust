@@ -81,7 +81,7 @@ impl<'a> CodeGenerator<'a> {
         if let Some(ref comment) = s.comment {
             self.generate_comment(comment);
         }
-        self.push_line("#[derive(Debug, Message)]");
+        self.push_line("#[derive(Clone, Debug, Message)]");
         self.push_line(&format!("pub struct {} {{", struct_name));
         for field in &s.fields {
             self.indent().generate_field(field);
