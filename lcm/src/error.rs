@@ -1,210 +1,255 @@
+//! Error types associated with LCM operations.
+//!
+//! In general, one will want to return an `Error` from a function as all of
+//! the other errors can be converted into the `Error` using either the `?`
+//! operator or `From`. The other error types exist in case one wants to
+//! attempt to recover from an error.
+
 use std::{io, string};
-use std::sync::mpsc;
 use regex;
 
 // TODO:
-// The errors need significant work. I just sort of added errors as I needed
-// them without any real thought or design.
+// We should hide the `From<T>` implementations for all of these errors. Most
+// of them only exist to make the code more readable in this crate and probably
+// shouldn't be used by the end user. The best method for doing this (that I've
+// heard) is to create separate "internal" and "external" errors and only do
+// the `From` implementations for the inner. Until that is done, I have hidden
+// the trait implementations from the docs.
+//
+// As they are hidden from the docs, I don't think I would consider making this
+// change to *not* be a breaking change.
 
-/// An error indicating that there was a failure to start the `Provider`.
+// TODO:
+// There are a lot of `ProviderIssue` type errors in this module. I want to
+// come up with some way to report the errors other than telling the user to
+// look at the log but I'm not sure how to do it. I inintially attempted to use
+// `Box<Fail>` but it didn't work. I think the only options might be:
+// 1: Use `fail::Error`
+//     * This is super expensive
+//     * But it's also not on a happy path
+// 2: Make this module aware of provider specific errors
+//     * This could lead to a large number of error types
+//     * But those could be filtered out via feature flags
+//     * ...but that could make maintaining projects difficult
+
+/// A generic LCM error.
+///
+/// If one does not intend to try and recover from errors, this is the best
+/// error type to handle. All of the LCM errors can be converted to this type
+/// using the `?` operator.
 #[derive(Debug, Fail)]
-#[fail(display = "Failed to start LCM provider.")]
-pub enum LcmInitError {
-    /// The provider failed to start.
-    #[fail(display = "Failed to start the LCM provider.")]
-    ProviderStart(#[cause] io::Error),
+pub enum Error {
+    /// An error happened while initializing the LCM instance.
+    #[fail(display = "An error happened during initialization.")]
+    Init(#[cause] InitError),
 
-    /// The provider is not known.
-    #[fail(display = "Unknown provider \"{}\"", _0)]
+    /// An error happened while trying to subscribe to a channel.
+    #[fail(display = "Failed to subscribe to the channel.")]
+    Subscribe(#[cause] SubscribeError),
+
+    /// An error happened while trying to publish a message.
+    #[fail(display = "Failed to publish message.")]
+    Publish(#[cause] PublishError),
+
+    /// An error happened while trying to handle incoming messages.
+    #[fail(display = "Unable to handle incoming messages.")]
+    Handle(#[cause] HandleError),
+}
+impl From<InitError> for Error {
+    fn from(err: InitError) -> Self {
+        Error::Init(err)
+    }
+}
+impl From<SubscribeError> for Error {
+    fn from(err: SubscribeError) -> Self {
+        Error::Subscribe(err)
+    }
+}
+impl From<PublishError> for Error {
+    fn from(err: PublishError) -> Self {
+        Error::Publish(err)
+    }
+}
+impl From<HandleError> for Error {
+    fn from(err: HandleError) -> Self {
+        Error::Handle(err)
+    }
+}
+
+
+/// The LCM instance was unable to start.
+#[derive(Debug, Fail)]
+pub enum InitError {
+    /// There was an IO issue that prevented the provider from starting.
+    #[fail(display = "The LCM provider failed to start due to an IO error.")]
+    IoError(#[cause] io::Error),
+
+    /// The supplied LCM URL requested a provider that isn't known.
+    ///
+    /// If you get this error, check the feature flags on the crate. It is
+    /// possible that the provider you are requesting is disabled.
+    #[fail(display = "Unknown provider \"{}\".", _0)]
     UnknownProvider(String),
 
-    /// The LCM URL was not valid.
-    #[fail(display = "The LCM URL was not valid")]
+    /// The provided LCM URL was not valid.
+    #[fail(display = "Invalid LCM URL.")]
     InvalidLcmUrl,
 }
 
-impl From<io::Error> for LcmInitError {
-    fn from(io_error: io::Error) -> Self {
-        LcmInitError::ProviderStart(io_error)
-    }
-}
-
-/// An error indicating that an attempt to subscribe to a topic was
-/// unsuccessful.
+/// The attempt to subscribe to a channel was unsuccessful.
 #[derive(Debug, Fail)]
 pub enum SubscribeError {
     /// The provided string was an invalid regular expression.
-    #[fail(display = "Invalid regular expression used to subscribe to channel.")]
+    #[fail(display = "Invalid regular expression used.")]
     InvalidRegex(#[cause] regex::Error),
 
-    /// The provider is no longer active.
-    #[fail(display = "The provider is no longer active.")]
-    MissingProvider,
+    /// The provider was unable to subscribe to the topic.
+    ///
+    /// Check the log for more information. Future releases should include more
+    /// information in this error type.
+    #[fail(display = "The provider failed to subscribe to the topic.")]
+    ProviderIssue,
 }
 
-impl From<regex::Error> for SubscribeError {
-    fn from(regex_error: regex::Error) -> Self {
-        SubscribeError::InvalidRegex(regex_error)
-    }
-}
-
-/// An error during publishing.
+/// Publishing to a channel failed.
 #[derive(Debug, Fail)]
 pub enum PublishError {
-    /// An error happened while trying to encode the message.
-    #[fail(display = "Error encoding message.")]
+    /// There was an error while trying to encode the message.
+    #[fail(display = "Unable to encode the message.")]
     MessageEncoding(#[cause] EncodeError),
 
-    /// An IO issue with the provider.
-    #[fail(display = "Error with the provider.")]
-    ProviderIssue(#[cause] io::Error),
+    /// There was an IO issue that prevented the provider from sending the
+    /// message.
+    #[fail(display = "Failed to send the message due to an IO error.")]
+    IoError(#[cause] io::Error),
 
-    /// The full message was not sent.
-    #[fail(display = "Unable to send the full message.")]
-    MessageNotSent,
-
-    /// The message was too large to be sent.
-    #[fail(display = "Message too large to send.")]
-    MessageTooLarge,
-
-    /// The channel name was too long.
-    #[fail(display = "Channel name too long.")]
-    ChannelNameTooLong,
+    /// The provider was unable to publish the message.
+    ///
+    /// Check the log for more information. Future releases should include more
+    /// information in this error type.
+    #[fail(display = "The provider was unable to publish the message.")]
+    ProviderIssue,
 }
 
-impl From<EncodeError> for PublishError {
-    fn from(err: EncodeError) -> Self {
-        PublishError::MessageEncoding(err)
-    }
-}
-
-impl From<io::Error> for PublishError {
-    fn from(io_err: io::Error) -> Self {
-        PublishError::ProviderIssue(io_err)
-    }
-}
-
-/// Indicates that an error occured while trying to handle messages.
+/// Error occured while trying to handle incoming messages.
 #[derive(Debug, Fail)]
 pub enum HandleError {
-    /// The provider returned an error.
-    #[fail(display = "Provider returned an error.")]
-    ProviderError {
-        #[cause]
-        io_error: io::Error,
-    },
+    /// There was an IO error while trying to handle messages.
+    #[fail(display = "Failed to handle messages due to an IO error.")]
+    IoError(#[cause] io::Error),
 
-    /// The provider is no longer active.
-    #[fail(display = "The provider is no longer active.")]
-    MissingProvider,
+    /// The provider was unable to handle the incoming messages.
+    ///
+    /// Check the log for more information. Future releases should include more
+    /// information in this error type.
+    #[fail(display = "The provider was unable to handle the incoming messages.")]
+    ProviderIssue,
 }
 
-impl From<mpsc::RecvError> for HandleError {
-    fn from(_: mpsc::RecvError) -> Self {
-        HandleError::MissingProvider
-    }
-}
-
-/// An error that happens while trying to encode a message.
-#[derive(Debug, Fail)]
-pub enum EncodeError {
-    #[fail(display = "The size of array does not match the size specified in {}. Expected {}, found {}.", size_var, expected, found)]
-    SizeMismatch {
-    /// The field specifying the size of the array.
-        size_var: String,
-
-    /// The size the array was expected to be.
-        expected: i64,
-
-    /// The size the array actually was.
-        found: usize,
-    },
-
-    #[fail(display = "Error while reading from buffer.")]
-    ReadErr {
-        #[cause]
-        io_error: io::Error,
-    },
-}
-
-impl From<io::Error> for EncodeError {
-    fn from(io_error: io::Error) -> Self {
-        EncodeError::ReadErr { io_error }
-    }
-}
-
-/// An error that happens while trying to decode a message.
+/// An error occurred while trying to decode a message.
 #[derive(Debug, Fail)]
 pub enum DecodeError {
-    /// The size variable for an array had an invalid size.
-    #[fail(display = "Invalid array size of {}", size)]
-    InvalidSize { size: i64 },
+    /// The size variable for an array was invalid.
+    #[fail(display = "Invalid array size of {}.", _0)]
+    InvalidSize(i64),
 
     /// The expected message hash does not match the found hash.
     #[fail(display = "Invalid hash found. Expected 0x{:X}, found 0x{:X}.", expected, found)]
     HashMismatch {
         /// The expected hash value.
         expected: u64,
-
         /// The found hash value.
         found: u64,
     },
 
     /// A boolean value was not encoded as either `0` or `1`.
-    #[fail(display = "Value of {} is invalid for Booleans. Booleans should be encoded as 0 or 1.",
-           val)]
-    InvalidBoolean {
-        /// The found value.
-        val: i8,
-    },
+    #[fail(display = "The value {} is invalid for booleans.", _0)]
+    InvalidBoolean(i8),
 
-    /// Error parsing a string into Unicode.
-    #[fail(display = "Invalid Unicode value found.")]
-    Utf8Error {
-        #[cause]
-        utf8_err: string::FromUtf8Error,
-    },
+    /// A string was not valid UTF-8.
+    #[fail(display = "Invalid Unicode found.")]
+    Utf8Error(#[cause] string::FromUtf8Error),
 
-    /// Missing terminating null character in a string.
-    #[fail(display = "String is missing null terminator.")]
+    /// A string was missing the null terminator.
+    ///
+    /// This doesn't stop us from parsing the string, but it does mean that the
+    /// message is incorrectly encoded.
+    #[fail(display = "String is missing the null terminator.")]
     MissingNullTerminator,
 
-    /// The message channel was closed.
+    /// An error occurred while trying to read from buffer.
     ///
-    /// Probably represents an unsubscription.
-    #[fail(display = "Message channel was closed.")]
-    MessageChannelClosed,
+    /// This error should never happen and should be removed in a future
+    /// release. If it ever happens, please report a bug.
+    #[fail(display = "An error happened while trying to read from the buffer.")]
+    IoError(#[cause] io::Error),
+}
 
-    /// An error while writing to the buffer.
-    #[fail(display = "Error while writing to the buffer.")]
-    WriteErr {
-        #[cause]
-        io_error: io::Error,
+/// An error occurred while trying to encode a message.
+#[derive(Debug, Fail)]
+pub enum EncodeError {
+    /// There was a disagreement between the size variable and the size of the
+    /// array.
+    #[fail(display = "The size of the array does not match size specified in {}. Expected {}, found {}.", size_var, expected, found)]
+    SizeMismatch {
+        /// The field specifying the size of the array.
+        size_var: &'static str,
+        /// The size the array was expected to be.
+        ///
+        /// This is a signed variable since all of LCM's integer types are
+        /// signed. This means that this error will happen any time the size
+        /// variable is negative.
+        expected: i64,
+        /// The size the array actually was.
+        found: usize,
     },
+
+    /// An error occurred while trying to write to the buffer.
+    ///
+    /// This error should never happen and should be removed in a future
+    /// release. If it ever happens, please report a bug.
+    #[fail(display = "An error occurred while trying to write to the buffer.")]
+    IoError(#[cause] io::Error),
 }
-impl DecodeError {
-    /// Create a new `InvalidSize`.
-    pub fn invalid_size(size: i64) -> Self {
-        DecodeError::InvalidSize { size }
-    }
 
-    /// Create a new `HashMismatch`.
-    pub fn hash_mismatch(expected: u64, found: u64) -> Self {
-        DecodeError::HashMismatch { expected, found }
-    }
+#[doc(hidden)]
+pub mod from {
+    use std::sync::mpsc;
+    use super::*;
 
-    /// Create a new `InvalidBoolean`.
-    pub fn invalid_bool(val: i8) -> Self {
-        DecodeError::InvalidBoolean { val }
+    impl From<io::Error> for InitError {
+        fn from(err: io::Error) -> Self {
+            InitError::IoError(err)
+        }
     }
-
-    /// Create a new `Utf8Error`.
-    pub fn invalid_utf8(utf8_err: string::FromUtf8Error) -> Self {
-        DecodeError::Utf8Error { utf8_err }
+    impl From<regex::Error> for SubscribeError {
+        fn from(err: regex::Error) -> Self {
+            SubscribeError::InvalidRegex(err)
+        }
     }
-}
-impl From<io::Error> for DecodeError {
-    fn from(io_error: io::Error) -> Self {
-        DecodeError::WriteErr { io_error }
+    impl From<EncodeError> for PublishError {
+        fn from(err: EncodeError) -> Self {
+            PublishError::MessageEncoding(err)
+        }
+    }
+    impl From<io::Error> for PublishError {
+        fn from(err: io::Error) -> Self {
+            PublishError::IoError(err)
+        }
+    }
+    impl From<mpsc::RecvError> for HandleError {
+        fn from(_: mpsc::RecvError) -> Self {
+            HandleError::ProviderIssue
+        }
+    }
+    impl From<io::Error> for DecodeError {
+        fn from(err: io::Error) -> Self {
+            DecodeError::IoError(err)
+        }
+    }
+    impl From<io::Error> for EncodeError {
+        fn from(err: io::Error) -> Self {
+            EncodeError::IoError(err)
+        }
     }
 }
