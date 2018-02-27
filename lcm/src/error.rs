@@ -217,36 +217,43 @@ pub mod from {
     use std::sync::mpsc;
     use super::*;
 
+    #[doc(hidden)]
     impl From<io::Error> for InitError {
         fn from(err: io::Error) -> Self {
             InitError::IoError(err)
         }
     }
+    #[doc(hidden)]
     impl From<regex::Error> for SubscribeError {
         fn from(err: regex::Error) -> Self {
             SubscribeError::InvalidRegex(err)
         }
     }
+    #[doc(hidden)]
     impl From<EncodeError> for PublishError {
         fn from(err: EncodeError) -> Self {
             PublishError::MessageEncoding(err)
         }
     }
+    #[doc(hidden)]
     impl From<io::Error> for PublishError {
         fn from(err: io::Error) -> Self {
             PublishError::IoError(err)
         }
     }
+    #[doc(hidden)]
     impl From<mpsc::RecvError> for HandleError {
         fn from(_: mpsc::RecvError) -> Self {
             HandleError::ProviderIssue
         }
     }
+    #[doc(hidden)]
     impl From<io::Error> for DecodeError {
         fn from(err: io::Error) -> Self {
             DecodeError::IoError(err)
         }
     }
+    #[doc(hidden)]
     impl From<io::Error> for EncodeError {
         fn from(err: io::Error) -> Self {
             EncodeError::IoError(err)
