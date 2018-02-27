@@ -83,7 +83,7 @@ impl Marshall for bool {
         match value {
             0 => Ok(false),
             1 => Ok(true),
-            v @ _ => Err(DecodeError::invalid_bool(v)),
+            v => Err(DecodeError::invalid_bool(v)),
         }
     }
 
@@ -109,14 +109,14 @@ impl Marshall for String {
 
         let len = i32::decode(buffer)?;
         if len <= 0 {
-            return Err(DecodeError::invalid_size(len as i64));
+            return Err(DecodeError::invalid_size(i64::from(len)));
         }
         let len = len - 1;
         let mut buf = Vec::new();
         for _ in 0..len {
             buf.push(u8::decode(buffer)?);
         }
-        let result = String::from_utf8(buf).map_err(|e| DecodeError::invalid_utf8(e))?;
+        let result = String::from_utf8(buf).map_err(DecodeError::invalid_utf8)?;
         match buffer.read_u8() {
             Ok(0) => Ok(result),
             Ok(_) => Err(DecodeError::MissingNullTerminator),

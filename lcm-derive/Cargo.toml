@@ -5,6 +5,7 @@ authors = ["Nathan Kent <nate@nkent.net>"]
 
 [lib]
 proc-macro = true
+doctest = false
 
 [dependencies]
 quote = "0.4"
