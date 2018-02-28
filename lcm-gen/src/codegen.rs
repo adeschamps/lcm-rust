@@ -1,11 +1,16 @@
+use Config;
 use ast;
 use itertools::Itertools;
 use std::fmt::{self, Display, Formatter};
 
 pub fn generate(module: &ast::Module) -> String {
+    generate_with_config(module, &Config::default())
+}
+
+pub fn generate_with_config(module: &ast::Module, config: &Config) -> String {
     let mut buffer = String::new();
     {
-        let mut generator = CodeGenerator::new(&mut buffer);
+        let mut generator = CodeGenerator::new(&mut buffer, config);
         generator.generate_module(module);
     }
     buffer
@@ -20,14 +25,16 @@ struct CodeGenerator<'a> {
     buffer: &'a mut String,
     indent: usize,
     start: bool,
+    config: &'a Config,
 }
 
 impl<'a> CodeGenerator<'a> {
-    fn new(buffer: &mut String) -> CodeGenerator {
+    fn new(buffer: &'a mut String, config: &'a Config) -> CodeGenerator<'a> {
         CodeGenerator {
             buffer,
             indent: 0,
             start: true,
+            config,
         }
     }
 
@@ -41,6 +48,7 @@ impl<'a> CodeGenerator<'a> {
             buffer: self.buffer,
             indent: self.indent + 1,
             start: true,
+            config: self.config,
         }
     }
 
@@ -81,7 +89,11 @@ impl<'a> CodeGenerator<'a> {
         if let Some(ref comment) = s.comment {
             self.generate_comment(comment);
         }
-        self.push_line("#[derive(Clone, Debug, Message)]");
+        let mut derives = vec!["Clone", "Debug", "Message"];
+        derives.extend(self.config.additional_traits.iter().map(|s| s.as_str()));
+        derives.sort();
+        let derives = derives.into_iter().join(", ");
+        self.push_line(&format!("#[derive({})]", derives));
         self.push_line(&format!("pub struct {} {{", struct_name));
         for field in &s.fields {
             self.indent().generate_field(field);

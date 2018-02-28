@@ -2,7 +2,7 @@ extern crate lcm_gen;
 #[macro_use]
 extern crate pretty_assertions;
 
-use lcm_gen::{ast, codegen};
+use lcm_gen::{ast, codegen, Config};
 use std::collections::HashMap;
 
 #[test]
@@ -154,3 +154,31 @@ pub struct MemberGroup {
 }
 "##
 );
+
+#[test]
+fn optional_traits() {
+    let module = ast::Module {
+        submodules: HashMap::new(),
+        structs: vec![
+            ast::Struct {
+                comment: None,
+                name: "MyType".into(),
+                fields: vec![],
+                constants: vec![],
+            },
+        ],
+    };
+
+    let config = Config {
+        additional_traits: vec!["Serialize".into(), "Deserialize".into(), "PartialEq".into()],
+        ..Config::default()
+    };
+    let generated = codegen::generate_with_config(&module, &config);
+
+    let expected = r#"#[derive(Clone, Debug, Deserialize, Message, PartialEq, Serialize)]
+pub struct MyType {
+}
+"#;
+
+    assert_eq!(generated, expected);
+}
