@@ -18,6 +18,8 @@ heck = "0.3.0"
 
 [dev-dependencies]
 pretty_assertions = "0.5.0"
+assert_cli = "0.5.4"
+tempdir = "0.3.6"
 
 [features]
 default = ["cli"]
