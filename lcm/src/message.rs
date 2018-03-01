@@ -83,7 +83,7 @@ impl Marshall for bool {
         match value {
             0 => Ok(false),
             1 => Ok(true),
-            v @ _ => Err(DecodeError::InvalidBoolean(v)),
+            v => Err(DecodeError::InvalidBoolean(v)),
         }
     }
 
@@ -109,7 +109,7 @@ impl Marshall for String {
 
         let len = i32::decode(buffer)?;
         if len <= 0 {
-            return Err(DecodeError::InvalidSize(len as i64));
+            return Err(DecodeError::InvalidSize(i64::from(len)));
         }
         let len = len - 1;
         let mut buf = Vec::new();
