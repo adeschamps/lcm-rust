@@ -38,6 +38,7 @@ pub fn generate<P: AsRef<Path> + Debug>(lcm_files: &[P]) -> Result<(), Error> {
 pub struct Config {
     pub package_prefix: Option<String>,
     pub output_file: Option<PathBuf>,
+    pub additional_traits: Vec<String>,
 }
 
 impl Default for Config {
@@ -45,6 +46,7 @@ impl Default for Config {
         Config {
             package_prefix: None,
             output_file: None,
+            additional_traits: vec![],
         }
     }
 }
@@ -102,6 +104,6 @@ impl Config {
             }
         }
 
-        Ok(codegen::generate(&root_module))
+        Ok(codegen::generate_with_config(&root_module, self))
     }
 }
