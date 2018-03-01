@@ -87,7 +87,7 @@ impl<'a> Lcm<'a> {
     ///
     /// The input is interpreted as a regular expression. Unlike the C
     /// implementation of LCM, the expression is *not* implicitly surrounded
-    /// by '^' and '$'.
+    /// by `^` and `$`.
     pub fn subscribe<M, F>(
         &mut self,
         channel: &str,
