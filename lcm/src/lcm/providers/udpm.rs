@@ -15,7 +15,7 @@ use utils::spsc;
 /// Message used to subscribe to a new channel.
 type SubscribeMsg = (
     Regex,
-    Box<Fn(&[u8]) -> Result<(), TrampolineError> + Send + 'static>,
+    Box<Fn(&str, &[u8]) -> Result<(), TrampolineError> + Send + 'static>,
 );
 
 /// LCM's magic number for short messages.
@@ -123,14 +123,14 @@ impl<'a> UdpmProvider<'a> {
     ) -> Result<Subscription, SubscribeError>
     where
         M: Message + Send + 'static,
-        F: FnMut(M) + 'a,
+        F: FnMut(&str, M) + 'a,
     {
         // Create the channel used to send the message back from the backend
-        let (tx, rx) = spsc::channel::<M>(buffer_size);
+        let (tx, rx) = spsc::channel::<(String, M)>(buffer_size);
 
         // Then create the function that will convert the bytes into a message
         // and send it and the function that will pass things on to the callback.
-        let conversion_func = move |mut bytes: &[u8]| -> Result<(), TrampolineError> {
+        let conversion_func = move |chan: &str, mut bytes: &[u8]| -> Result<(), TrampolineError> {
             // First try to decode the message
             let message = M::decode_with_hash(&mut bytes)?;
 
@@ -139,8 +139,8 @@ impl<'a> UdpmProvider<'a> {
                 return Err(TrampolineError::MessageChannelClosed);
             }
 
-            // Otherwise, but it in the queue and call it a day.
-            tx.send(message);
+            // Otherwise, put it in the queue and call it a day.
+            tx.send((chan.into(), message));
             Ok(())
         };
 
@@ -150,8 +150,8 @@ impl<'a> UdpmProvider<'a> {
             // equal to the size of the queue. This seems like it would be the
             // least surprising behavior for the user.
             for _ in 0..rx.capacity() {
-                if let Some(m) = rx.recv() {
-                    callback(m);
+                if let Some((chan, m)) = rx.recv() {
+                    callback(&chan, m);
                 } else {
                     break;
                 }
@@ -671,7 +671,7 @@ impl Backend {
             );
             if re.is_match(channel) {
                 trace!("Channel \"{}\" matched subscription \"{}\"", channel, re);
-                match (*f)(message) {
+                match (*f)(channel, message) {
                     Err(TrampolineError::MessageChannelClosed) => false,
                     Err(e) => {
                         warn!("Error decoding message: {}", e);

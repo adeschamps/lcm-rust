@@ -96,7 +96,7 @@ impl<'a> Lcm<'a> {
     ) -> Result<Subscription, SubscribeError>
     where
         M: Message + Send + 'static,
-        F: FnMut(M) + 'a,
+        F: FnMut(&str, M) + 'a,
     {
         let re = Regex::new(channel)?;
 
@@ -108,10 +108,10 @@ impl<'a> Lcm<'a> {
     ///
     /// The normal `Lcm::subscribe` function should be preferred over this one.
     pub fn subscribe_raw<F>(&mut self, channel: &str, buffer_size: usize, mut callback: F) -> Result<Subscription, SubscribeError>
-        where F: FnMut(&[u8]) + 'a
+        where F: FnMut(&str, &[u8]) + 'a
     {
-        self.subscribe(channel, buffer_size, move |m: RawBytes| {
-            callback(&m.0);
+        self.subscribe(channel, buffer_size, move |chan: &str, m: RawBytes| {
+            callback(chan, &m.0);
         })
     }
 
