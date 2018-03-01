@@ -102,10 +102,10 @@ impl<'a> Lcm<'a> {
     ///
     /// The normal `Lcm::subscribe` function should be preferred over this one.
     pub fn subscribe_raw<F>(&mut self, channel: &str, buffer_size: usize, mut callback: F) -> Result<Subscription, SubscribeError>
-        where F: FnMut(u64, &[u8]) + 'a
+        where F: FnMut(&[u8]) + 'a
     {
         self.subscribe(channel, buffer_size, move |m: RawBytes| {
-            callback(m.hash, &m.bytes);
+            callback(&m.0);
         })
     }
 
@@ -124,12 +124,11 @@ impl<'a> Lcm<'a> {
     /// Publishes a raw message on the specified channel.
     ///
     /// The normal `Lcm::publish` function should be preferred over this one.
-    pub fn publish_raw(&mut self, channel: &str, hash: u64, buffer: &[u8]) -> Result<(), PublishError> {
+    pub fn publish_raw(&mut self, channel: &str, buffer: &[u8]) -> Result<(), PublishError> {
         // TODO:
         // This is a fairly inefficient implementation. At some point, it
         // should be replaced with something better.
-        let raw_bytes = RawBytes { hash, bytes: buffer.to_owned() };
-        self.publish(channel, &raw_bytes)
+        self.publish(channel, &RawBytes(buffer.to_owned()))
     }
 
     /// Waits for and dispatches messages.
@@ -160,10 +159,7 @@ enum Provider<'a> {
 }
 
 /// A type used to allow users to subscribe to raw bytes.
-struct RawBytes {
-    hash: u64,
-    bytes: Vec<u8>,
-}
+struct RawBytes(Vec<u8>);
 impl Marshall for RawBytes {
     fn encode(&self, _: &mut Write) -> Result<(), EncodeError> {
         unimplemented!();
@@ -181,18 +177,13 @@ impl Message for RawBytes {
     const HASH: u64 = 0;
 
     fn encode_with_hash(&self) -> Result<Vec<u8>, EncodeError> {
-        let mut buffer = Vec::with_capacity(self.hash.size() + self.bytes.len());
-        self.hash.encode(&mut buffer)?;
-        buffer.extend_from_slice(&self.bytes);
-        Ok(buffer)
+        Ok(self.0.clone())
     }
 
-    fn decode_with_hash(mut buffer: &mut Read) -> Result<Self, DecodeError> {
-        let hash: u64 = Marshall::decode(&mut buffer)?;
+    fn decode_with_hash(buffer: &mut Read) -> Result<Self, DecodeError> {
         let mut bytes = Vec::new();
         buffer.read_to_end(&mut bytes)?;
-
-        Ok(RawBytes { hash, bytes })
+        Ok(RawBytes(bytes))
     }
 }
 
