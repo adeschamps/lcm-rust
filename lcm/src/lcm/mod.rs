@@ -44,7 +44,7 @@ impl<'a> Lcm<'a> {
     /// This uses the `LCM_DEFAULT_URL` environment variable to construct a
     /// provider. If the variable does not exist or is empty, it will use the
     /// LCM default of "udpm://239.255.76.67:7667?ttl=0".
-    pub fn new() -> Result<Self, LcmInitError> {
+    pub fn new() -> Result<Self, InitError> {
         let lcm_default_url = env::var("LCM_DEFAULT_URL");
         let lcm_url = match lcm_default_url {
             Ok(ref s) if s.is_empty() => {
@@ -66,7 +66,7 @@ impl<'a> Lcm<'a> {
 
     /// Create a new `Lcm` instance with the provider constructed from the
     /// supplied LCM URL.
-    pub fn with_lcm_url(lcm_url: &str) -> Result<Self, LcmInitError> {
+    pub fn with_lcm_url(lcm_url: &str) -> Result<Self, InitError> {
         debug!("Creating LCM instance using \"{}\"", lcm_url);
         let (provider_name, network, options) = parse_lcm_url(lcm_url)?;
 
@@ -77,7 +77,7 @@ impl<'a> Lcm<'a> {
             #[cfg(feature = "file")]
             "file" => Provider::File(FileProvider::new(network, &options)?),
 
-            _ => return Err(LcmInitError::UnknownProvider(provider_name.into())),
+            _ => return Err(InitError::UnknownProvider(provider_name.into())),
         };
 
         Ok(Lcm { provider })
@@ -196,13 +196,13 @@ impl Message for RawBytes {
 }
 
 /// Parses the string into its LCM URL components.
-fn parse_lcm_url(lcm_url: &str) -> Result<(&str, &str, HashMap<&str, &str>), LcmInitError> {
+fn parse_lcm_url(lcm_url: &str) -> Result<(&str, &str, HashMap<&str, &str>), InitError> {
     // Start by parsing the provider string
     let (provider, remaining) = if let Some(p) = lcm_url.find("://") {
         let (p, r) = lcm_url.split_at(p);
         (p, &r[3..])
     } else {
-        return Err(LcmInitError::InvalidLcmUrl);
+        return Err(InitError::InvalidLcmUrl);
     };
 
     // Then split the network string from the options.
@@ -223,7 +223,7 @@ fn parse_lcm_url(lcm_url: &str) -> Result<(&str, &str, HashMap<&str, &str>), Lcm
                     let (a, v) = s.split_at(p);
                     Ok((a, &v[1..]))
                 } else {
-                    Err(LcmInitError::InvalidLcmUrl)
+                    Err(InitError::InvalidLcmUrl)
                 }
             })
             .collect::<Result<_, _>>()?,

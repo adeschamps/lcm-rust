@@ -54,7 +54,7 @@ impl Field {
                         quote! {
                             if self.#size_name as usize != item.len() {
                                 return Err(::lcm::error::EncodeError::SizeMismatch {
-                                    size_var: stringify!(#size_name).into(),
+                                    size_var: stringify!(#size_name),
                                     expected: self.#size_name as i64,
                                     found: item.len()
                                 });

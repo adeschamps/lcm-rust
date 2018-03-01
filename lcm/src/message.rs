@@ -35,7 +35,7 @@ pub trait Message: Marshall {
     fn decode_with_hash(mut buffer: &mut Read) -> Result<Self, DecodeError> {
         let hash: u64 = Marshall::decode(&mut buffer)?;
         if hash != Self::HASH {
-            return Err(DecodeError::hash_mismatch(Self::HASH, hash));
+            return Err(DecodeError::HashMismatch { expected: Self::HASH, found: hash});
         }
         Marshall::decode(buffer)
     }
@@ -83,7 +83,7 @@ impl Marshall for bool {
         match value {
             0 => Ok(false),
             1 => Ok(true),
-            v => Err(DecodeError::invalid_bool(v)),
+            v => Err(DecodeError::InvalidBoolean(v)),
         }
     }
 
@@ -109,14 +109,14 @@ impl Marshall for String {
 
         let len = i32::decode(buffer)?;
         if len <= 0 {
-            return Err(DecodeError::invalid_size(i64::from(len)));
+            return Err(DecodeError::InvalidSize(i64::from(len)));
         }
         let len = len - 1;
         let mut buf = Vec::new();
         for _ in 0..len {
             buf.push(u8::decode(buffer)?);
         }
-        let result = String::from_utf8(buf).map_err(DecodeError::invalid_utf8)?;
+        let result = String::from_utf8(buf).map_err(|e| DecodeError::Utf8Error(e))?;
         match buffer.read_u8() {
             Ok(0) => Ok(result),
             Ok(_) => Err(DecodeError::MissingNullTerminator),

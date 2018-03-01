@@ -15,7 +15,7 @@ use utils::spsc;
 /// Message used to subscribe to a new channel.
 type SubscribeMsg = (
     Regex,
-    Box<Fn(&[u8]) -> Result<(), DecodeError> + Send + 'static>,
+    Box<Fn(&[u8]) -> Result<(), TrampolineError> + Send + 'static>,
 );
 
 /// LCM's magic number for short messages.
@@ -71,14 +71,14 @@ pub struct UdpmProvider<'a> {
 }
 impl<'a> UdpmProvider<'a> {
     /// Creates a new UDPM provider using the given settings.
-    pub fn new(network: &str, options: &HashMap<&str, &str>) -> Result<Self, LcmInitError> {
+    pub fn new(network: &str, options: &HashMap<&str, &str>) -> Result<Self, InitError> {
         // Parse the network string into the address and port
         let (addr, port) = UdpmProvider::parse_network_string(network)?;
 
         // Get the TTL value
         let ttl = match options.get("ttl").unwrap_or(&"0").parse() {
             Ok(ttl) => ttl,
-            Err(_) => return Err(LcmInitError::InvalidLcmUrl),
+            Err(_) => return Err(InitError::InvalidLcmUrl),
         };
 
         debug!(
@@ -130,13 +130,13 @@ impl<'a> UdpmProvider<'a> {
 
         // Then create the function that will convert the bytes into a message
         // and send it and the function that will pass things on to the callback.
-        let conversion_func = move |mut bytes: &[u8]| -> Result<(), DecodeError> {
+        let conversion_func = move |mut bytes: &[u8]| -> Result<(), TrampolineError> {
             // First try to decode the message
             let message = M::decode_with_hash(&mut bytes)?;
 
             // Then double check that the channel isn't closed
             if tx.is_closed() {
-                return Err(DecodeError::MessageChannelClosed);
+                return Err(TrampolineError::MessageChannelClosed);
             }
 
             // Otherwise, but it in the queue and call it a day.
@@ -165,7 +165,10 @@ impl<'a> UdpmProvider<'a> {
         // Send it across the way and then store our callback.
         match self.subscribe_tx.send((channel, Box::new(conversion_func))) {
             Ok(_) => {}
-            Err(_) => return Err(SubscribeError::MissingProvider),
+            Err(_) => {
+                warn!("UDPM provider has died. Unable to send subscribe message.");
+                return Err(SubscribeError::ProviderIssue)
+            },
         }
         self.subscriptions
             .push((Subscription(sub_id), Box::new(callback_fn)));
@@ -200,11 +203,13 @@ impl<'a> UdpmProvider<'a> {
         let message_buf = message.encode_with_hash()?;
 
         if channel.len() > MAX_CHANNEL_NAME_LENGTH {
-            return Err(PublishError::ChannelNameTooLong);
+            warn!("The channel name was too long. Unable to publish message.");
+            return Err(PublishError::ProviderIssue);
         }
 
         if message_buf.len() > MAX_MESSAGE_SIZE {
-            return Err(PublishError::MessageTooLarge);
+            warn!("The message was too large to publish.");
+            return Err(PublishError::ProviderIssue);
         }
 
         // Determine if we need to split this message up into fragments
@@ -241,7 +246,8 @@ impl<'a> UdpmProvider<'a> {
     pub fn handle_timeout(&mut self, timeout: Duration) -> Result<(), HandleError> {
         debug!("Waiting on notify channel");
         if let Err(mpsc::RecvTimeoutError::Disconnected) = self.notify_rx.recv_timeout(timeout) {
-            return Err(HandleError::MissingProvider);
+            warn!("The provider has been shut down or otherwise killed.");
+            return Err(HandleError::ProviderIssue);
         }
         self.subscriptions
             .iter_mut()
@@ -251,7 +257,7 @@ impl<'a> UdpmProvider<'a> {
     }
 
     /// Parse the network string into the address and port components.
-    fn parse_network_string(network: &str) -> Result<(Ipv4Addr, u16), LcmInitError> {
+    fn parse_network_string(network: &str) -> Result<(Ipv4Addr, u16), InitError> {
         // We can't just parse this, since we need to provide default values.
         let (addr, port) = match network.find(':') {
             Some(p) => {
@@ -278,11 +284,11 @@ impl<'a> UdpmProvider<'a> {
         // Parse them into their respective types
         let addr = match addr.parse() {
             Ok(a) => a,
-            Err(_) => return Err(LcmInitError::InvalidLcmUrl),
+            Err(_) => return Err(InitError::InvalidLcmUrl),
         };
         let port = match port.parse() {
             Ok(p) => p,
-            Err(_) => return Err(LcmInitError::InvalidLcmUrl),
+            Err(_) => return Err(InitError::InvalidLcmUrl),
         };
 
         Ok((addr, port))
@@ -339,7 +345,8 @@ impl<'a> UdpmProvider<'a> {
 
         if n_fragments > ::std::u16::MAX as usize {
             // Probably a redundant check
-            return Err(PublishError::MessageTooLarge);
+            warn!("The message was broken into too many fragments. Unable to send.");
+            return Err(PublishError::ProviderIssue);
         }
 
         trace!(
@@ -385,7 +392,8 @@ impl<'a> UdpmProvider<'a> {
             let sent = self.socket.send_to(&buf[0..datagram_size], self.addr)?;
 
             if sent != datagram_size {
-                return Err(PublishError::MessageNotSent);
+                warn!("The number of bytes sent ({}) did not equal the size of the datagram ({}).", sent, datagram_size);
+                return Err(PublishError::ProviderIssue);
             }
 
             remaining_message = &remaining_message[amount_written..];
@@ -429,7 +437,8 @@ impl<'a> UdpmProvider<'a> {
         let sent = self.socket.send_to(&buf[0..datagram_size], self.addr)?;
 
         if sent != datagram_size {
-            Err(PublishError::MessageNotSent)
+            warn!("The number of bytes sent ({}) did not equal the size of the datagram ({}).", sent, datagram_size);
+            Err(PublishError::ProviderIssue)
         } else {
             Ok(())
         }
@@ -458,7 +467,7 @@ pub struct Backend {
 }
 impl Backend {
     /// Create a `Backend` with the specified channels.
-    pub fn new(
+    fn new(
         socket: UdpSocket,
         notify_tx: mpsc::SyncSender<()>,
         subscribe_rx: mpsc::Receiver<SubscribeMsg>,
@@ -478,9 +487,8 @@ impl Backend {
     /// through the appropriate channels based on subscriptions. It will only
     /// exit if the notification channel closes (which signifies that the
     /// client provider object has been deleted).
-    pub fn run(mut self) -> io::Result<()> {
+    fn run(mut self) -> io::Result<()> {
         let mut buf = [0u8; 0xFFFF];
-
         loop {
             // Wait for an incoming datagram
             trace!("Waiting on socket");
@@ -664,7 +672,7 @@ impl Backend {
             if re.is_match(channel) {
                 trace!("Channel \"{}\" matched subscription \"{}\"", channel, re);
                 match (*f)(message) {
-                    Err(DecodeError::MessageChannelClosed) => false,
+                    Err(TrampolineError::MessageChannelClosed) => false,
                     Err(e) => {
                         warn!("Error decoding message: {}", e);
                         true
@@ -714,4 +722,23 @@ struct FragmentBuffer {
 
     /// The received parts of the message.
     buffer: Vec<u8>,
+}
+
+/// Errors that can happen during the trampoline closure.
+#[derive(Debug, Fail)]
+enum TrampolineError {
+    /// The channel was closed.
+    ///
+    /// This generally signifies that the user unsubscribed from the channel.
+    #[fail(display = "Unsubscribed from the channel")]
+    MessageChannelClosed,
+
+    /// There was a decoding error.
+    #[fail(display = "Unable to decode message: {}", _0)]
+    Decode(#[cause] DecodeError),
+}
+impl From<DecodeError> for TrampolineError {
+    fn from(err: DecodeError) -> Self {
+        TrampolineError::Decode(err)
+    }
 }
