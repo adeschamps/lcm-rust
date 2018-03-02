@@ -1,8 +1,8 @@
 use std::env;
 use std::io::{Write, Read};
-use std::collections::HashMap;
 use std::time::Duration;
 use regex::Regex;
+use url::Url;
 
 mod providers;
 #[cfg(feature = "udpm")]
@@ -68,16 +68,16 @@ impl<'a> Lcm<'a> {
     /// supplied LCM URL.
     pub fn with_lcm_url(lcm_url: &str) -> Result<Self, InitError> {
         debug!("Creating LCM instance using \"{}\"", lcm_url);
-        let (provider_name, network, options) = parse_lcm_url(lcm_url)?;
+        let url = Url::parse(lcm_url)?;
 
-        let provider = match provider_name {
+        let provider = match url.scheme() {
             #[cfg(feature = "udpm")]
-            "udpm" => Provider::Udpm(UdpmProvider::new(network, &options)?),
+            "udpm" => Provider::Udpm(UdpmProvider::new(&url)?),
 
             #[cfg(feature = "file")]
-            "file" => Provider::File(FileProvider::new(network, &options)?),
+            "file" => Provider::File(FileProvider::new(&url)?),
 
-            _ => return Err(InitError::UnknownProvider(provider_name.into())),
+            scheme => return Err(InitError::UnknownProvider(scheme.into())),
         };
 
         Ok(Lcm { provider })
@@ -193,42 +193,4 @@ impl Message for RawBytes {
         buffer.read_to_end(&mut bytes)?;
         Ok(RawBytes(bytes))
     }
-}
-
-/// Parses the string into its LCM URL components.
-fn parse_lcm_url(lcm_url: &str) -> Result<(&str, &str, HashMap<&str, &str>), InitError> {
-    // Start by parsing the provider string
-    let (provider, remaining) = if let Some(p) = lcm_url.find("://") {
-        let (p, r) = lcm_url.split_at(p);
-        (p, &r[3..])
-    } else {
-        return Err(InitError::InvalidLcmUrl);
-    };
-
-    // Then split the network string from the options.
-    let (network, options) = if let Some(p) = remaining.rfind('?') {
-        let (n, o) = remaining.split_at(p);
-        (n, &o[1..])
-    } else {
-        (remaining, "")
-    };
-
-    // Now we convert the options string into a map
-    let options = match options {
-        "" => HashMap::new(),
-        _ => options
-            .split('&')
-            .map(|s| {
-                if let Some(p) = s.find('=') {
-                    let (a, v) = s.split_at(p);
-                    Ok((a, &v[1..]))
-                } else {
-                    Err(InitError::InvalidLcmUrl)
-                }
-            })
-            .collect::<Result<_, _>>()?,
-    };
-
-    // Then we can return it all
-    Ok((provider, network, options))
 }

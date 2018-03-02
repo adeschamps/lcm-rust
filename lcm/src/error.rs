@@ -5,8 +5,9 @@
 //! operator or `From`. The other error types exist in case one wants to
 //! attempt to recover from an error.
 
-use std::{io, string};
+use std::{io, num, string};
 use regex;
+use url;
 
 // TODO:
 // We should hide the `From<T>` implementations for all of these errors. Most
@@ -93,7 +94,10 @@ pub enum InitError {
 
     /// The provided LCM URL was not valid.
     #[fail(display = "Invalid LCM URL.")]
-    InvalidLcmUrl,
+    InvalidLcmUrl(#[cause] url::ParseError),
+
+    #[fail(display = "Failed to parse time to live argument.")]
+    InvalidTtl(#[cause] num::ParseIntError),
 }
 
 /// The attempt to subscribe to a channel was unsuccessful.
@@ -221,6 +225,12 @@ pub mod from {
     impl From<io::Error> for InitError {
         fn from(err: io::Error) -> Self {
             InitError::IoError(err)
+        }
+    }
+    #[doc(hidden)]
+    impl From<url::ParseError> for InitError {
+        fn from(err: url::ParseError) -> Self {
+            InitError::InvalidLcmUrl(err)
         }
     }
     #[doc(hidden)]
