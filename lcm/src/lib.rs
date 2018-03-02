@@ -1,6 +1,6 @@
 //! From the [LCM Homepage](http://lcm-proj.github.io/):
-//! >
-//! LCM is a set of libraries and tools for message passing and data marshalling,
+//!
+//! > LCM is a set of libraries and tools for message passing and data marshalling,
 //! targeted at real-time systems where high-bandwidth and low latency are critical.
 //! It provides a publish/subscribe message passing model
 //! and automatic marshalling/unmarshalling code generation
