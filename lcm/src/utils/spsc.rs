@@ -273,7 +273,7 @@ impl<T> RingBuffer<T> {
         let conv_offset = (offset % self.capacity) as isize;
         debug_assert!(conv_offset >= 0, "converted offset does not fit in usize");
         unsafe {
-            *self.data.offset(conv_offset) = item;
+            ptr::write(self.data.offset(conv_offset), item);
         }
     }
 
