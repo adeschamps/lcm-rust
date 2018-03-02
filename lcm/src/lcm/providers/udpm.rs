@@ -367,9 +367,9 @@ impl<'a> UdpmProvider<'a> {
                 buf.write_u32::<NetworkEndian>(message.len() as u32)
                     .unwrap();
                 buf.write_u32::<NetworkEndian>(fragment_offset).unwrap();
-                buf.write_u32::<NetworkEndian>(fragment_number as u32)
+                buf.write_u16::<NetworkEndian>(fragment_number as u16)
                     .unwrap();
-                buf.write_u32::<NetworkEndian>(n_fragments as u32).unwrap();
+                buf.write_u16::<NetworkEndian>(n_fragments as u16).unwrap();
 
                 if fragment_number == 0 {
                     // We need to write the channel name in the very first fragment
@@ -523,6 +523,8 @@ impl Backend {
 
     /// Process the given datagram.
     fn process_datagram(&mut self, datagram: &[u8], sender: SocketAddr) -> bool {
+        trace!("Incoming datagram of size {} from {}.", datagram.len(), sender);
+
         match NetworkEndian::read_u32(&datagram[0..4]) {
             SHORT_HEADER_MAGIC => self.process_short_datagram(datagram),
             LONG_HEADER_MAGIC => self.process_frag_datagram(datagram, sender),
@@ -578,12 +580,13 @@ impl Backend {
         let fragment_number = NetworkEndian::read_u16(&datagram[16..18]);
         let n_fragments = NetworkEndian::read_u16(&datagram[18..20]);
 
-        if payload_size > MAX_DATAGRAM_SIZE {
-            debug!("Huge datagram. Dropping");
+        if payload_size > MAX_MESSAGE_SIZE {
+            debug!("Message too long. Dropping.");
+            return false;
         }
 
         trace!(
-            "Received fragment number {} out of {}.",
+            "Recieved fragment {} of {}",
             fragment_number,
             n_fragments
         );
@@ -600,10 +603,12 @@ impl Backend {
         // If there is already a fragment, check to see if it is a part of this
         // message. If not, clear it out.
         if fragment.sequence_number != sequence_number || fragment.buffer.len() != payload_size {
-            debug!(
-                "Dropping fragmented message. Missing {} parts.",
-                fragment.parts_remaining
-            );
+            if fragment.parts_remaining != 0 {
+                debug!(
+                    "Dropping fragmented message. Missing {} parts.",
+                    fragment.parts_remaining
+                );
+            }
             fragment.parts_remaining = n_fragments;
             fragment.sequence_number = sequence_number;
             fragment.channel.clear();
