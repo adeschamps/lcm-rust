@@ -25,6 +25,7 @@ extern crate byteorder;
 extern crate failure;
 extern crate net2;
 extern crate regex;
+extern crate url;
 
 mod utils;
 

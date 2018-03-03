@@ -3,8 +3,10 @@ use std::io::{self, Write};
 use std::collections::HashMap;
 use std::time::Duration;
 use std::sync::mpsc;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs, UdpSocket};
+use std::borrow::Borrow;
 use regex::Regex;
+use url::Url;
 use byteorder::{ByteOrder, NetworkEndian, WriteBytesExt};
 
 use Message;
@@ -71,21 +73,25 @@ pub struct UdpmProvider<'a> {
 }
 impl<'a> UdpmProvider<'a> {
     /// Creates a new UDPM provider using the given settings.
-    pub fn new(network: &str, options: &HashMap<&str, &str>) -> Result<Self, InitError> {
+    pub fn new(url: &Url) -> Result<Self, InitError> {
         // Parse the network string into the address and port
-        let (addr, port) = UdpmProvider::parse_network_string(network)?;
+        let addr = url.to_socket_addrs()?.next().expect("The URL should contain an address");
 
-        // Get the TTL value
-        let ttl = match options.get("ttl").unwrap_or(&"0").parse() {
-            Ok(ttl) => ttl,
-            Err(_) => return Err(InitError::InvalidLcmUrl),
-        };
+        // Parse additional options
+        let mut ttl = 0;
+        for (key, value) in url.query_pairs() {
+            match key.borrow() {
+                "ttl" => ttl = value.parse().map_err(InitError::InvalidTtl)?,
+                "recv_buf_size" => { /* TODO: support this option */ }
+                _ => {}
+            }
+        }
 
         debug!(
-            "Starting UDPM provider with multicast (addr = {}, port = {}, ttl = {})",
-            addr, port, ttl
+            "Starting UDPM provider with multicast (ip = {}, port = {}, ttl = {})",
+            addr.ip(), addr.port(), ttl
         );
-        let socket = UdpmProvider::setup_udp_socket(addr, port, ttl)?;
+        let socket = UdpmProvider::setup_udp_socket(addr, ttl)?;
         let (notify_tx, notify_rx) = mpsc::sync_channel(1);
         let (subscribe_tx, subscribe_rx) = mpsc::channel();
 
@@ -101,7 +107,7 @@ impl<'a> UdpmProvider<'a> {
 
         Ok(UdpmProvider {
             socket,
-            addr: SocketAddr::new(IpAddr::V4(addr), port),
+            addr,
             notify_rx,
             next_subscription_id: 0,
             subscriptions: Vec::new(),
@@ -256,46 +262,8 @@ impl<'a> UdpmProvider<'a> {
         Ok(())
     }
 
-    /// Parse the network string into the address and port components.
-    fn parse_network_string(network: &str) -> Result<(Ipv4Addr, u16), InitError> {
-        // We can't just parse this, since we need to provide default values.
-        let (addr, port) = match network.find(':') {
-            Some(p) => {
-                let (a, p) = network.split_at(p);
-                (a, &p[1..])
-            }
-            None => (network, ""),
-        };
-
-        // Supply the defaults if no value supplied
-        let addr = if addr.is_empty() {
-            debug!("No IP address supplied. Using default.");
-            "239.255.76.67"
-        } else {
-            addr
-        };
-        let port = if port.is_empty() {
-            debug!("No port supplied. Using default.");
-            "7667"
-        } else {
-            port
-        };
-
-        // Parse them into their respective types
-        let addr = match addr.parse() {
-            Ok(a) => a,
-            Err(_) => return Err(InitError::InvalidLcmUrl),
-        };
-        let port = match port.parse() {
-            Ok(p) => p,
-            Err(_) => return Err(InitError::InvalidLcmUrl),
-        };
-
-        Ok((addr, port))
-    }
-
     /// Set up the UDP socket.
-    fn setup_udp_socket(addr: Ipv4Addr, port: u16, ttl: u32) -> io::Result<UdpSocket> {
+    fn setup_udp_socket(addr: SocketAddr, ttl: u32) -> io::Result<UdpSocket> {
         use net2::UdpBuilder;
 
         let builder = UdpBuilder::new_v4()?;
@@ -320,11 +288,14 @@ impl<'a> UdpmProvider<'a> {
         debug!("Binding UDP socket");
         let socket = {
             let inaddr_any = IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0));
-            builder.bind(SocketAddr::new(inaddr_any, port))?
+            builder.bind(SocketAddr::new(inaddr_any, addr.port()))?
         };
 
         debug!("Joining multicast group");
-        socket.join_multicast_v4(&addr, &Ipv4Addr::new(0, 0, 0, 0))?;
+        match addr.ip() {
+            IpAddr::V4(ref addr) => socket.join_multicast_v4(addr, &Ipv4Addr::new(0, 0, 0, 0))?,
+            IpAddr::V6(ref _addr) => { unimplemented!("IPv6 is not supported.") },
+        }
 
         debug!("Setting multicast packet TTL to {}", ttl);
         socket.set_multicast_ttl_v4(ttl)?;
