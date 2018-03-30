@@ -5,20 +5,11 @@ use std::time::Duration;
 use std::sync::mpsc;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs, UdpSocket};
 use std::borrow::Borrow;
-use regex::Regex;
 use url::Url;
 use byteorder::{ByteOrder, NetworkEndian, WriteBytesExt};
 
-use Message;
-use lcm::Subscription;
+use lcm::{MAX_MESSAGE_SIZE, TrampolineError, SubscribeMsg};
 use error::*;
-use utils::spsc;
-
-/// Message used to subscribe to a new channel.
-type SubscribeMsg = (
-    Regex,
-    Box<Fn(&str, &[u8]) -> Result<(), TrampolineError> + Send + 'static>,
-);
 
 /// LCM's magic number for short messages.
 const SHORT_HEADER_MAGIC: u32 = 0x4C43_3032;
@@ -29,14 +20,6 @@ const LONG_HEADER_MAGIC: u32 = 0x4C43_3033;
 ///
 /// We want this to stay below the Ethernet MTU.
 pub const MAX_DATAGRAM_SIZE: usize = 1400;
-
-/// This is the maximum allowed message size.
-///
-/// The C version of LCM discards any message greater than this size.
-pub const MAX_MESSAGE_SIZE: usize = 1 << 28;
-
-/// The maximum allow number of bytes in a channel name.
-pub const MAX_CHANNEL_NAME_LENGTH: usize = 63;
 
 /// The header size for small datagrams.
 pub const SMALL_HEADER_SIZE: usize = 8;
@@ -50,7 +33,7 @@ pub const FRAG_HEADER_SIZE: usize = 20;
 /// converted from raw bytes to an LCM datagram and then checked against all
 /// the subscriptions in the background thread. The user thread only sees the
 /// message ones it has been sent through the SPSC queue.
-pub struct UdpmProvider<'a> {
+pub struct UdpmProvider {
     /// The socket used to send datagrams.
     socket: UdpSocket,
 
@@ -61,21 +44,16 @@ pub struct UdpmProvider<'a> {
     /// queued.
     notify_rx: mpsc::Receiver<()>,
 
-    /// The next available subscription ID
-    next_subscription_id: u32,
-    /// The subscriptions.
-    subscriptions: Vec<(Subscription, Box<FnMut() + 'a>)>,
-    /// The channel used to notify the backend of new subscriptions.
-    subscribe_tx: mpsc::Sender<SubscribeMsg>,
-
     /// The sequence number for the outgoing messages.
     sequence_number: u32,
 }
-impl<'a> UdpmProvider<'a> {
+impl UdpmProvider {
     /// Creates a new UDPM provider using the given settings.
-    pub fn new(url: &Url) -> Result<Self, InitError> {
+    pub fn new(url: &Url, subscribe_rx: mpsc::Receiver<SubscribeMsg>) -> Result<Self, InitError> {
         // Parse the network string into the address and port
-        let addr = url.to_socket_addrs()?.next().expect("The URL should contain an address");
+        let addr = url.to_socket_addrs()?
+            .next()
+            .expect("The URL should contain an address");
 
         // Parse additional options
         let mut ttl = 0;
@@ -89,11 +67,12 @@ impl<'a> UdpmProvider<'a> {
 
         debug!(
             "Starting UDPM provider with multicast (ip = {}, port = {}, ttl = {})",
-            addr.ip(), addr.port(), ttl
+            addr.ip(),
+            addr.port(),
+            ttl
         );
         let socket = UdpmProvider::setup_udp_socket(addr, ttl)?;
         let (notify_tx, notify_rx) = mpsc::sync_channel(1);
-        let (subscribe_tx, subscribe_rx) = mpsc::channel();
 
         let receiver = Backend::new(socket.try_clone()?, notify_tx, subscribe_rx);
 
@@ -109,115 +88,15 @@ impl<'a> UdpmProvider<'a> {
             socket,
             addr,
             notify_rx,
-            next_subscription_id: 0,
-            subscriptions: Vec::new(),
-            subscribe_tx,
             sequence_number: 0,
         })
-    }
-
-    /// Subscribes a callback to a particular topic.
-    ///
-    /// This involves sending the `channel` and a closure to the currently
-    /// running `Backend`. The closure will be used to convert the LCM datagram
-    /// into an actual message type which will then be passed to the client.
-    pub fn subscribe<M, F>(
-        &mut self,
-        channel: Regex,
-        buffer_size: usize,
-        mut callback: F,
-    ) -> Result<Subscription, SubscribeError>
-    where
-        M: Message + Send + 'static,
-        F: FnMut(&str, M) + 'a,
-    {
-        // Create the channel used to send the message back from the backend
-        let (tx, rx) = spsc::channel::<(String, M)>(buffer_size);
-
-        // Then create the function that will convert the bytes into a message
-        // and send it and the function that will pass things on to the callback.
-        let conversion_func = move |chan: &str, mut bytes: &[u8]| -> Result<(), TrampolineError> {
-            // First try to decode the message
-            let message = M::decode_with_hash(&mut bytes)?;
-
-            // Then double check that the channel isn't closed
-            if tx.is_closed() {
-                return Err(TrampolineError::MessageChannelClosed);
-            }
-
-            // Otherwise, put it in the queue and call it a day.
-            tx.send((chan.into(), message));
-            Ok(())
-        };
-
-        let callback_fn = move || {
-            // We can't loop forever because they might be filling up faster
-            // than we can process them. So we're only going to read a number
-            // equal to the size of the queue. This seems like it would be the
-            // least surprising behavior for the user.
-            for _ in 0..rx.capacity() {
-                if let Some((chan, m)) = rx.recv() {
-                    callback(&chan, m);
-                } else {
-                    break;
-                }
-            }
-        };
-
-        // Finally, create the new subscription ID
-        let sub_id = self.next_subscription_id;
-        self.next_subscription_id += 1;
-
-        // Send it across the way and then store our callback.
-        match self.subscribe_tx.send((channel, Box::new(conversion_func))) {
-            Ok(_) => {}
-            Err(_) => {
-                warn!("UDPM provider has died. Unable to send subscribe message.");
-                return Err(SubscribeError::ProviderIssue)
-            },
-        }
-        self.subscriptions
-            .push((Subscription(sub_id), Box::new(callback_fn)));
-
-        Ok(Subscription(sub_id))
-    }
-
-    /// Unsubscribes a message handler.
-    ///
-    /// All this will do is delete the subscription from the `Vec`. The backend
-    /// will determine that the topic has been unsubscribed since the SPSC
-    /// channel used to send messages will be closed.
-    pub fn unsubscribe(&mut self, subscription: Subscription) {
-        self.subscriptions
-            .retain(|&(ref sub, _)| *sub != subscription);
-
-        // Explicitly drop the subscription, since it is no longer
-        // valid.  Without this, clippy suggests passing the
-        // subscription by reference, which does not capture the
-        // semantics of what this function does.
-        drop(subscription);
     }
 
     /// Publishes a message on the specified channel.
     ///
     /// This message will be sent directly by the `UdpmProvider` without being
     /// sent to the backend.
-    pub fn publish<M>(&mut self, channel: &str, message: &M) -> Result<(), PublishError>
-    where
-        M: Message,
-    {
-        let message_buf = message.encode_with_hash()?;
-
-        if channel.len() > MAX_CHANNEL_NAME_LENGTH {
-            warn!("The channel name was too long. Unable to publish message.");
-            return Err(PublishError::ProviderIssue);
-        }
-
-        if message_buf.len() > MAX_MESSAGE_SIZE {
-            warn!("The message was too large to publish.");
-            return Err(PublishError::ProviderIssue);
-        }
-
+    pub fn publish(&mut self, channel: &str, message_buf: &[u8]) -> Result<(), PublishError> {
         // Determine if we need to split this message up into fragments
         let available = MAX_DATAGRAM_SIZE - SMALL_HEADER_SIZE - (channel.len() + 1);
         if message_buf.len() > available {
@@ -239,10 +118,6 @@ impl<'a> UdpmProvider<'a> {
     pub fn handle(&mut self) -> Result<(), HandleError> {
         debug!("Waiting on notify channel");
         self.notify_rx.recv()?;
-        self.subscriptions
-            .iter_mut()
-            .for_each(|&mut (_, ref mut f)| (*f)());
-
         Ok(())
     }
 
@@ -255,10 +130,6 @@ impl<'a> UdpmProvider<'a> {
             warn!("The provider has been shut down or otherwise killed.");
             return Err(HandleError::ProviderIssue);
         }
-        self.subscriptions
-            .iter_mut()
-            .for_each(|&mut (_, ref mut f)| (*f)());
-
         Ok(())
     }
 
@@ -294,7 +165,7 @@ impl<'a> UdpmProvider<'a> {
         debug!("Joining multicast group");
         match addr.ip() {
             IpAddr::V4(ref addr) => socket.join_multicast_v4(addr, &Ipv4Addr::new(0, 0, 0, 0))?,
-            IpAddr::V6(ref _addr) => { unimplemented!("IPv6 is not supported.") },
+            IpAddr::V6(ref _addr) => unimplemented!("IPv6 is not supported."),
         }
 
         debug!("Setting multicast packet TTL to {}", ttl);
@@ -363,7 +234,10 @@ impl<'a> UdpmProvider<'a> {
             let sent = self.socket.send_to(&buf[0..datagram_size], self.addr)?;
 
             if sent != datagram_size {
-                warn!("The number of bytes sent ({}) did not equal the size of the datagram ({}).", sent, datagram_size);
+                warn!(
+                    "The number of bytes sent ({}) did not equal the size of the datagram ({}).",
+                    sent, datagram_size
+                );
                 return Err(PublishError::ProviderIssue);
             }
 
@@ -408,7 +282,10 @@ impl<'a> UdpmProvider<'a> {
         let sent = self.socket.send_to(&buf[0..datagram_size], self.addr)?;
 
         if sent != datagram_size {
-            warn!("The number of bytes sent ({}) did not equal the size of the datagram ({}).", sent, datagram_size);
+            warn!(
+                "The number of bytes sent ({}) did not equal the size of the datagram ({}).",
+                sent, datagram_size
+            );
             Err(PublishError::ProviderIssue)
         } else {
             Ok(())
@@ -494,7 +371,11 @@ impl Backend {
 
     /// Process the given datagram.
     fn process_datagram(&mut self, datagram: &[u8], sender: SocketAddr) -> bool {
-        trace!("Incoming datagram of size {} from {}.", datagram.len(), sender);
+        trace!(
+            "Incoming datagram of size {} from {}.",
+            datagram.len(),
+            sender
+        );
 
         match NetworkEndian::read_u32(&datagram[0..4]) {
             SHORT_HEADER_MAGIC => self.process_short_datagram(datagram),
@@ -556,11 +437,7 @@ impl Backend {
             return false;
         }
 
-        trace!(
-            "Recieved fragment {} of {}",
-            fragment_number,
-            n_fragments
-        );
+        trace!("Recieved fragment {} of {}", fragment_number, n_fragments);
 
         let fragment = self.fragments
             .entry(sender)
@@ -698,23 +575,4 @@ struct FragmentBuffer {
 
     /// The received parts of the message.
     buffer: Vec<u8>,
-}
-
-/// Errors that can happen during the trampoline closure.
-#[derive(Debug, Fail)]
-enum TrampolineError {
-    /// The channel was closed.
-    ///
-    /// This generally signifies that the user unsubscribed from the channel.
-    #[fail(display = "Unsubscribed from the channel")]
-    MessageChannelClosed,
-
-    /// There was a decoding error.
-    #[fail(display = "Unable to decode message: {}", _0)]
-    Decode(#[cause] DecodeError),
-}
-impl From<DecodeError> for TrampolineError {
-    fn from(err: DecodeError) -> Self {
-        TrampolineError::Decode(err)
-    }
 }
