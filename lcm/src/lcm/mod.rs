@@ -1,15 +1,33 @@
 use std::env;
-use std::io::{Write, Read};
+use std::io::{Read, Write};
+use std::sync::mpsc;
 use std::time::Duration;
 use regex::Regex;
 use url::Url;
 
 mod providers;
+#[cfg(feature = "file")]
+use self::providers::file::FileProvider;
 #[cfg(feature = "udpm")]
 use self::providers::udpm::UdpmProvider;
 
 use {Marshall, Message};
 use error::*;
+use utils::spsc;
+
+/// Message used to subscribe to a new channel.
+type SubscribeMsg = (
+    Regex,
+    Box<Fn(&str, &[u8]) -> Result<(), TrampolineError> + Send + 'static>,
+);
+
+/// This is the maximum allowed message size.
+///
+/// The C version of LCM discards any message greater than this size.
+pub const MAX_MESSAGE_SIZE: usize = 1 << 28;
+
+/// The maximum allow number of bytes in a channel name.
+pub const MAX_CHANNEL_NAME_LENGTH: usize = 63;
 
 /// Convenience macro for dispatching functions among providers.
 macro_rules! provider
@@ -36,7 +54,14 @@ pub struct Lcm<'a> {
     ///
     /// This provider basically does all of the work, with the `Lcm` struct
     /// being a unified frontend.
-    provider: Provider<'a>,
+    provider: Provider,
+
+    /// The next available subscription ID
+    next_subscription_id: u32,
+    /// The subscriptions.
+    subscriptions: Vec<(Subscription, Box<FnMut() + 'a>)>,
+    /// The channel used to notify the backend of new subscriptions.
+    subscribe_tx: mpsc::Sender<SubscribeMsg>,
 }
 impl<'a> Lcm<'a> {
     /// Creates a new `Lcm` instance.
@@ -70,9 +95,11 @@ impl<'a> Lcm<'a> {
         debug!("Creating LCM instance using \"{}\"", lcm_url);
         let url = Url::parse(lcm_url)?;
 
+        let (subscribe_tx, subscribe_rx) = mpsc::channel();
+
         let provider = match url.scheme() {
             #[cfg(feature = "udpm")]
-            "udpm" => Provider::Udpm(UdpmProvider::new(&url)?),
+            "udpm" => Provider::Udpm(UdpmProvider::new(&url, subscribe_rx)?),
 
             #[cfg(feature = "file")]
             "file" => Provider::File(FileProvider::new(&url)?),
@@ -80,7 +107,12 @@ impl<'a> Lcm<'a> {
             scheme => return Err(InitError::UnknownProvider(scheme.into())),
         };
 
-        Ok(Lcm { provider })
+        Ok(Lcm {
+            provider,
+            next_subscription_id: 0,
+            subscriptions: Vec::new(),
+            subscribe_tx,
+        })
     }
 
     /// Subscribes a callback to a particular channel.
@@ -92,23 +124,76 @@ impl<'a> Lcm<'a> {
         &mut self,
         channel: &str,
         buffer_size: usize,
-        callback: F,
+        mut callback: F,
     ) -> Result<Subscription, SubscribeError>
     where
         M: Message + Send + 'static,
         F: FnMut(&str, M) + 'a,
     {
-        let re = Regex::new(channel)?;
+        let channel = Regex::new(channel)?;
 
-        // Dispatch the subscription request
-        provider!(self.subscribe(re, buffer_size, callback))
+        // Create the channel used to send the message back from the backend
+        let (tx, rx) = spsc::channel::<(String, M)>(buffer_size);
+
+        // Then create the function that will convert the bytes into a message
+        // and send it and the function that will pass things on to the callback.
+        let conversion_func = move |chan: &str, mut bytes: &[u8]| -> Result<(), TrampolineError> {
+            // First try to decode the message
+            let message = M::decode_with_hash(&mut bytes)?;
+
+            // Then double check that the channel isn't closed
+            if tx.is_closed() {
+                return Err(TrampolineError::MessageChannelClosed);
+            }
+
+            // Otherwise, put it in the queue and call it a day.
+            tx.send((chan.into(), message));
+            Ok(())
+        };
+
+        let callback_fn = move || {
+            // We can't loop forever because they might be filling up faster
+            // than we can process them. So we're only going to read a number
+            // equal to the size of the queue. This seems like it would be the
+            // least surprising behavior for the user.
+            for _ in 0..rx.capacity() {
+                if let Some((chan, m)) = rx.recv() {
+                    callback(&chan, m);
+                } else {
+                    break;
+                }
+            }
+        };
+
+        // Finally, create the new subscription ID
+        let sub_id = self.next_subscription_id;
+        self.next_subscription_id += 1;
+
+        // Send it across the way and then store our callback.
+        match self.subscribe_tx.send((channel, Box::new(conversion_func))) {
+            Ok(_) => {}
+            Err(_) => {
+                warn!("UDPM provider has died. Unable to send subscribe message.");
+                return Err(SubscribeError::ProviderIssue);
+            }
+        }
+        self.subscriptions
+            .push((Subscription(sub_id), Box::new(callback_fn)));
+
+        Ok(Subscription(sub_id))
     }
 
     /// Subscribes a raw callback to a particular channel.
     ///
     /// The normal `Lcm::subscribe` function should be preferred over this one.
-    pub fn subscribe_raw<F>(&mut self, channel: &str, buffer_size: usize, mut callback: F) -> Result<Subscription, SubscribeError>
-        where F: FnMut(&str, &[u8]) + 'a
+    pub fn subscribe_raw<F>(
+        &mut self,
+        channel: &str,
+        buffer_size: usize,
+        mut callback: F,
+    ) -> Result<Subscription, SubscribeError>
+    where
+        F: FnMut(&str, &[u8]) + 'a,
     {
         self.subscribe(channel, buffer_size, move |chan: &str, m: RawBytes| {
             callback(chan, &m.0);
@@ -117,7 +202,14 @@ impl<'a> Lcm<'a> {
 
     /// Unsubscribes a message handler.
     pub fn unsubscribe(&mut self, subscription: Subscription) {
-        provider!(self.unsubscribe(subscription))
+        self.subscriptions
+            .retain(|&(ref sub, _)| *sub != subscription);
+
+        // Explicitly drop the subscription, since it is no longer
+        // valid.  Without this, clippy suggests passing the
+        // subscription by reference, which does not capture the
+        // semantics of what this function does.
+        drop(subscription);
     }
 
     /// Publishes a message on the specified channel.
@@ -125,7 +217,19 @@ impl<'a> Lcm<'a> {
     where
         M: Message,
     {
-        provider!(self.publish(channel, message))
+        let message_buf = message.encode_with_hash()?;
+
+        if channel.len() > MAX_CHANNEL_NAME_LENGTH {
+            warn!("The channel name was too long. Unable to publish message.");
+            return Err(PublishError::ProviderIssue);
+        }
+
+        if message_buf.len() > MAX_MESSAGE_SIZE {
+            warn!("The message was too large to publish.");
+            return Err(PublishError::ProviderIssue);
+        }
+
+        provider!(self.publish(channel, &message_buf))
     }
 
     /// Publishes a raw message on the specified channel.
@@ -140,12 +244,39 @@ impl<'a> Lcm<'a> {
 
     /// Waits for and dispatches messages.
     pub fn handle(&mut self) -> Result<(), HandleError> {
-        provider!(self.handle())
+        provider!(self.handle())?;
+        self.subscriptions
+            .iter_mut()
+            .for_each(|&mut (_, ref mut f)| (*f)());
+        Ok(())
     }
 
     /// Waits for and dispatches messages, with a timeout.
     pub fn handle_timeout(&mut self, timeout: Duration) -> Result<(), HandleError> {
-        provider!(self.handle_timeout(timeout))
+        provider!(self.handle_timeout(timeout))?;
+        self.subscriptions
+            .iter_mut()
+            .for_each(|&mut (_, ref mut f)| (*f)());
+        Ok(())
+    }
+} // impl Lcm
+
+/// Errors that can happen during the trampoline closure.
+#[derive(Debug, Fail)]
+pub enum TrampolineError {
+    /// The channel was closed.
+    ///
+    /// This generally signifies that the user unsubscribed from the channel.
+    #[fail(display = "Unsubscribed from the channel")]
+    MessageChannelClosed,
+
+    /// There was a decoding error.
+    #[fail(display = "Unable to decode message: {}", _0)]
+    Decode(#[cause] DecodeError),
+}
+impl From<DecodeError> for TrampolineError {
+    fn from(err: DecodeError) -> Self {
+        TrampolineError::Decode(err)
     }
 }
 
@@ -156,14 +287,14 @@ impl<'a> Lcm<'a> {
 pub struct Subscription(u32);
 
 /// The backing providers for the `Lcm` type.
-enum Provider<'a> {
+enum Provider {
     /// The UDP Multicast provider.
     #[cfg(feature = "udpm")]
-    Udpm(UdpmProvider<'a>),
+    Udpm(UdpmProvider),
 
     /// The log file provider.
     #[cfg(feature = "file")]
-    File(FileProvider<'a>),
+    File(FileProvider),
 }
 
 /// A type used to allow users to subscribe to raw bytes.
