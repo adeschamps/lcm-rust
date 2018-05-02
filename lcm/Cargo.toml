@@ -8,7 +8,7 @@ net2 = "0.2"
 log = "0.4"
 byteorder = "1.2.1"
 failure = "0.1"
-regex = "0.2"
+regex = "1.0"
 lcm-derive = { path = "../lcm-derive" }
 url = "1.7.0"
 
