@@ -14,4 +14,4 @@ lcm-derive = { path = "../lcm-derive" }
 
 [build-dependencies]
 lcm-gen = { path = "../lcm-gen" }
-glob = "0.2.11"
+glob = "0.3.0"
