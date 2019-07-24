@@ -10,7 +10,7 @@ byteorder = "1.2.1"
 failure = "0.1"
 regex = "1.0"
 lcm-derive = { path = "../lcm-derive" }
-url = "1.7.0"
+url = "2.0.0"
 
 [features]
 default = ["udpm"]
