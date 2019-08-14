@@ -9,4 +9,4 @@ doctest = false
 
 [dependencies]
 quote = "0.5"
-syn = "0.13"
+syn = "1.0"
