@@ -136,11 +136,12 @@ pub struct Temperature {
 "##
 );
 
-/// Tests the case where multiple members share the same type:
-///
-/// ```
-/// double x, y, z;
-/// ```
+// Tests the case where multiple members share the same type:
+//
+// ```
+// double x, y, z;
+// ```
+
 check_generated!(
     member_group,
     r##"#[derive(Clone, Debug, Message)]
