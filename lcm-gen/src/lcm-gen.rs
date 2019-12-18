@@ -1,7 +1,6 @@
 #[macro_use]
 extern crate failure;
 extern crate lcm_gen;
-#[macro_use]
 extern crate structopt;
 
 use failure::Error;
