@@ -1,7 +1,6 @@
 #[macro_use]
 extern crate failure;
 extern crate lcm_gen;
-#[macro_use]
 extern crate structopt;
 
 use failure::Error;
@@ -36,7 +35,7 @@ fn main() {
         Ok(()) => {}
         Err(e) => {
             println!("Error: {}", e);
-            for cause in e.causes().skip(1) {
+            for cause in e.iter_chain().skip(1) {
                 println!("Caused by: {}", cause);
             }
             println!("Backtrace:\n{}", e.backtrace());
