@@ -18,7 +18,7 @@ use utils::spsc;
 /// Message used to subscribe to a new channel.
 type SubscribeMsg = (
     Regex,
-    Box<Fn(&str, &[u8]) -> Result<(), TrampolineError> + Send + 'static>,
+    Box<dyn Fn(&str, &[u8]) -> Result<(), TrampolineError> + Send + 'static>,
 );
 
 /// This is the maximum allowed message size.
@@ -59,7 +59,7 @@ pub struct Lcm<'a> {
     /// The next available subscription ID
     next_subscription_id: u32,
     /// The subscriptions.
-    subscriptions: Vec<(Subscription, Box<FnMut() + 'a>)>,
+    subscriptions: Vec<(Subscription, Box<dyn FnMut() + 'a>)>,
     /// The channel used to notify the backend of new subscriptions.
     subscribe_tx: mpsc::Sender<SubscribeMsg>,
 }
@@ -300,11 +300,11 @@ enum Provider {
 /// A type used to allow users to subscribe to raw bytes.
 struct RawBytes(Vec<u8>);
 impl Marshall for RawBytes {
-    fn encode(&self, _: &mut Write) -> Result<(), EncodeError> {
+    fn encode(&self, _: &mut dyn Write) -> Result<(), EncodeError> {
         unimplemented!();
     }
 
-    fn decode(_: &mut Read) -> Result<Self, DecodeError> {
+    fn decode(_: &mut dyn Read) -> Result<Self, DecodeError> {
         unimplemented!();
     }
 
@@ -319,7 +319,7 @@ impl Message for RawBytes {
         Ok(self.0.clone())
     }
 
-    fn decode_with_hash(buffer: &mut Read) -> Result<Self, DecodeError> {
+    fn decode_with_hash(buffer: &mut dyn Read) -> Result<Self, DecodeError> {
         let mut bytes = Vec::new();
         buffer.read_to_end(&mut bytes)?;
         Ok(RawBytes(bytes))

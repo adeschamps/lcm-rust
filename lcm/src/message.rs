@@ -7,10 +7,10 @@ use error::*;
 pub trait Marshall: Sized {
     /// Encodes a message into a buffer.
     /// `Lcm` uses a `Vec<u8>` with its capacity set to the value returned by [`size()`].
-    fn encode(&self, buffer: &mut Write) -> Result<(), EncodeError>;
+    fn encode(&self, buffer: &mut dyn Write) -> Result<(), EncodeError>;
 
     /// Decodes a message from a buffer.
-    fn decode(buffer: &mut Read) -> Result<Self, DecodeError>;
+    fn decode(buffer: &mut dyn Read) -> Result<Self, DecodeError>;
 
     /// Returns the number of bytes this message is expected to take when encoded.
     fn size(&self) -> usize;
@@ -32,7 +32,7 @@ pub trait Message: Marshall {
 
     /// Decodes a message from a buffer,
     /// and also checks that the hash at the beginning is correct.
-    fn decode_with_hash(mut buffer: &mut Read) -> Result<Self, DecodeError> {
+    fn decode_with_hash(mut buffer: &mut dyn Read) -> Result<Self, DecodeError> {
         let hash: u64 = Marshall::decode(&mut buffer)?;
         if hash != Self::HASH {
             return Err(DecodeError::HashMismatch { expected: Self::HASH, found: hash});
@@ -44,12 +44,12 @@ pub trait Message: Marshall {
 macro_rules! impl_marshall {
     ( $type:ty, $read:ident, $write:ident $(, $endian:ident )* ) => {
         impl Marshall for $type {
-            fn encode(&self, buffer: &mut Write) -> Result<(), EncodeError> {
+            fn encode(&self, buffer: &mut dyn Write) -> Result<(), EncodeError> {
                 buffer.$write::<$($endian),*>(*self)?;
                 Ok(())
             }
 
-            fn decode(buffer: &mut Read) -> Result<Self, DecodeError> {
+            fn decode(buffer: &mut dyn Read) -> Result<Self, DecodeError> {
                 let res = buffer.$read::<$($endian),*>()?;
                 Ok(res)
             }
@@ -73,12 +73,12 @@ impl_marshall!(f32, read_f32, write_f32, NetworkEndian);
 impl_marshall!(f64, read_f64, write_f64, NetworkEndian);
 
 impl Marshall for bool {
-    fn encode(&self, buffer: &mut Write) -> Result<(), EncodeError> {
+    fn encode(&self, buffer: &mut dyn Write) -> Result<(), EncodeError> {
         let value: i8 = if *self { 1 } else { 0 };
         value.encode(buffer)
     }
 
-    fn decode(buffer: &mut Read) -> Result<Self, DecodeError> {
+    fn decode(buffer: &mut dyn Read) -> Result<Self, DecodeError> {
         let value = i8::decode(buffer)?;
         match value {
             0 => Ok(false),
@@ -93,7 +93,7 @@ impl Marshall for bool {
 }
 
 impl Marshall for String {
-    fn encode(&self, buffer: &mut Write) -> Result<(), EncodeError> {
+    fn encode(&self, buffer: &mut dyn Write) -> Result<(), EncodeError> {
         let len: i32 = self.len() as i32 + 1;
         len.encode(buffer)?;
         for &b in self.as_bytes() {
@@ -102,7 +102,7 @@ impl Marshall for String {
         (0 as u8).encode(buffer)
     }
 
-    fn decode(buffer: &mut Read) -> Result<Self, DecodeError> {
+    fn decode(buffer: &mut dyn Read) -> Result<Self, DecodeError> {
         // Until fallable allocation is stable, we can't use
         // Vec::with_capacity because an invalid input could cause a
         // panic.
